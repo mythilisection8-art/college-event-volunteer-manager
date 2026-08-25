@@ -6,6 +6,7 @@ import { registrationService } from '../../api/services/registrationService';
 import { StatCard } from '../../components/common/StatCard';
 import { Badge } from '../../components/common/Badge';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
+import { QRRegistrationPassModal } from '../../components/attendee/QRRegistrationPassModal';
 import {
   ClipboardList,
   CheckCircle2,
@@ -17,7 +18,8 @@ import {
   Sparkles,
   ChevronRight,
   Ticket,
-  Users
+  Users,
+  QrCode
 } from 'lucide-react';
 
 export const StudentDashboard = () => {
@@ -25,9 +27,11 @@ export const StudentDashboard = () => {
   const [attendingEvents, setAttendingEvents] = useState([]);
   const [volunteerApps, setVolunteerApps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPass, setSelectedPass] = useState(null);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
+      setLoading(true);
       try {
         const [attendeeRes, volunteerRes] = await Promise.all([
           attendeeService.getMyAttendingEvents(),
@@ -35,10 +39,10 @@ export const StudentDashboard = () => {
         ]);
 
         if (attendeeRes?.success) {
-          setAttendingEvents(attendeeRes.data);
+          setAttendingEvents(attendeeRes.data || []);
         }
         if (volunteerRes?.success) {
-          setVolunteerApps(volunteerRes.data);
+          setVolunteerApps(volunteerRes.data || []);
         }
       } catch (err) {
         console.error('Error loading dashboard data:', err);
@@ -49,10 +53,15 @@ export const StudentDashboard = () => {
     fetchDashboardData();
   }, []);
 
-  const totalAttending = attendingEvents.length;
-  const totalVolunteerApps = volunteerApps.length;
-  const approvedVolunteers = volunteerApps.filter((r) => r.registration_status === 'approved').length;
-  const pendingVolunteers = volunteerApps.filter((r) => r.registration_status === 'pending').length;
+  const totalAttending = attendingEvents?.length || 0;
+  const totalVolunteerApps = volunteerApps?.length || 0;
+  const approvedVolunteers = (volunteerApps || []).filter(
+    (r) => r.registration_status?.toLowerCase() === 'approved'
+  ).length;
+  const pendingVolunteers = (volunteerApps || []).filter(
+    (r) => r.registration_status?.toLowerCase() === 'pending'
+  ).length;
+
 
   return (
     <div className="space-y-8">
@@ -160,9 +169,25 @@ export const StudentDashboard = () => {
                       <span>📍 {evt.venue}</span>
                     </div>
                   </div>
-                  <span className="px-2.5 py-1 text-xs font-bold bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-                    Seat Confirmed
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        setSelectedPass({
+                          passType: 'attendee',
+                          eventId: evt.event_id,
+                          registrationId: evt.attendee_registration_id,
+                        })
+                      }
+                      className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200 transition-all flex items-center gap-1 shadow-xs"
+                      title="View Attendee QR Pass"
+                    >
+                      <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Pass</span>
+                    </button>
+                    <span className="hidden sm:inline-block px-2.5 py-1 text-xs font-bold bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
+                      Confirmed
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -215,13 +240,42 @@ export const StudentDashboard = () => {
                       <span>Organizer: {app.organizer_name}</span>
                     </div>
                   </div>
-                  <Badge status={app.registration_status} />
+                  <div className="flex items-center gap-2">
+                    {app.registration_status?.toLowerCase() === 'approved' && (
+                      <button
+                        onClick={() =>
+                          setSelectedPass({
+                            passType: 'volunteer',
+                            eventId: app.event_id,
+                            registrationId: app.registration_id,
+                          })
+                        }
+
+                        className="px-2.5 py-1 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 transition-all flex items-center gap-1 shadow-xs"
+                        title="View Volunteer QR Pass"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Pass</span>
+                      </button>
+                    )}
+                    <Badge status={app.registration_status} />
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Attendee & Volunteer QR Pass Modal */}
+      <QRRegistrationPassModal
+        isOpen={Boolean(selectedPass)}
+        onClose={() => setSelectedPass(null)}
+        passType={selectedPass?.passType || 'attendee'}
+        eventId={selectedPass?.eventId}
+        registrationId={selectedPass?.registrationId}
+      />
     </div>
   );
 };
+

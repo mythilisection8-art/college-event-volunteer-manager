@@ -7,6 +7,7 @@ import { Badge } from '../../components/common/Badge';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
+import { QRRegistrationPassModal } from '../../components/attendee/QRRegistrationPassModal';
 import {
   Calendar,
   Clock,
@@ -20,7 +21,8 @@ import {
   CheckCircle2,
   Ticket,
   Users,
-  Sparkles
+  Sparkles,
+  QrCode
 } from 'lucide-react';
 
 export const MyRegistrationsPage = () => {
@@ -38,12 +40,17 @@ export const MyRegistrationsPage = () => {
   const [attendingEvents, setAttendingEvents] = useState([]);
   const [loadingAttendees, setLoadingAttendees] = useState(true);
 
+  // QR Pass modal state (supports both 'attendee' and 'volunteer')
+  const [selectedPass, setSelectedPass] = useState(null);
+
   // Cancel modals
   const [selectedRegToCancel, setSelectedRegToCancel] = useState(null);
   const [cancellingVolunteer, setCancellingVolunteer] = useState(false);
 
   const [selectedAttendeeToCancel, setSelectedAttendeeToCancel] = useState(null);
   const [cancellingAttendee, setCancellingAttendee] = useState(false);
+
+
 
   // Fetch Volunteer Registrations
   const fetchVolunteerRegistrations = useCallback(async () => {
@@ -277,11 +284,42 @@ export const MyRegistrationsPage = () => {
                     </div>
                   )}
 
-                  {/* Coordinator Contacts & Submission info */}
-                  <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
-                    <span>
-                      Applied on {new Date(reg.registered_at).toLocaleString()}
-                    </span>
+                  {/* Volunteer Card Actions & Coordinator Contacts */}
+                  <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-400">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {reg.registration_status?.toLowerCase() === 'approved' && (
+                        <button
+                          onClick={() =>
+                            setSelectedPass({
+                              passType: 'volunteer',
+                              eventId: reg.event_id,
+                              registrationId: reg.registration_id,
+                            })
+                          }
+                          className="px-3.5 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 transition-all flex items-center gap-1.5 shadow-xs"
+                        >
+                          <QrCode className="w-3.5 h-3.5 text-purple-600" />
+                          <span>View Volunteer QR Pass</span>
+                        </button>
+                      )}
+
+                      {reg.registration_status?.toLowerCase() === 'pending' && (
+                        <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-amber-600" />
+                          <span>Pass Available Upon Approval</span>
+                        </span>
+                      )}
+
+
+                      <Link
+                        to={`/events/${reg.event_id}`}
+                        className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition-colors"
+                      >
+                        <span>Event Details</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </Link>
+                    </div>
+
                     <div className="flex items-center gap-3 text-slate-600">
                       <span>Organizer: <strong>{reg.organizer_name}</strong></span>
                       {reg.organizer_email && (
@@ -359,13 +397,29 @@ export const MyRegistrationsPage = () => {
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <Link
-                      to={`/events/${evt.event_id}`}
-                      className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
-                    >
-                      <span>View Event</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() =>
+                          setSelectedPass({
+                            passType: 'attendee',
+                            eventId: evt.event_id,
+                            registrationId: evt.attendee_registration_id,
+                          })
+                        }
+                        className="px-3.5 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200 transition-all flex items-center gap-1.5 shadow-xs"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>View Attendee QR Pass</span>
+                      </button>
+
+                      <Link
+                        to={`/events/${evt.event_id}`}
+                        className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition-colors"
+                      >
+                        <span>Details</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </Link>
+                    </div>
 
                     <button
                       onClick={() => setSelectedAttendeeToCancel(evt)}
@@ -403,6 +457,15 @@ export const MyRegistrationsPage = () => {
         confirmText="Release My Seat"
         isDanger={true}
         loading={cancellingAttendee}
+      />
+
+      {/* Modal 3: Attendee & Volunteer QR Registration Pass Modal */}
+      <QRRegistrationPassModal
+        isOpen={Boolean(selectedPass)}
+        onClose={() => setSelectedPass(null)}
+        passType={selectedPass?.passType || 'attendee'}
+        eventId={selectedPass?.eventId}
+        registrationId={selectedPass?.registrationId}
       />
     </div>
   );

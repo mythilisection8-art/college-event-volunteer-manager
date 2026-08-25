@@ -403,11 +403,168 @@ const updateAttendance = async (req, res, next) => {
   }
 };
 
+// @desc    Get Volunteer QR Registration Pass (Student ownership strictly enforced)
+// @route   GET /api/registrations/:eventId/pass OR GET /api/registrations/pass/:registrationId
+// @access  Private (Authenticated student, organizer of event, or admin)
+const getVolunteerPass = async (req, res, next) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    let query = `
+      SELECT 
+        r.id AS registration_id,
+        r.event_id,
+        r.user_id,
+        r.status AS registration_status,
+        r.attendance_status,
+        r.skills_notes,
+        r.remarks AS organizer_remarks,
+        r.registered_at,
+        r.updated_at,
+        u.id AS student_id,
+        u.name AS student_name,
+        u.email AS student_email,
+        u.roll_number AS student_roll_number,
+        u.department AS student_department,
+        u.phone AS student_phone,
+        e.id AS event_id,
+        e.title AS event_title,
+        e.description AS event_description,
+        e.event_date,
+        e.start_time,
+        e.end_time,
+        e.venue,
+        e.status AS event_status,
+        e.banner_image,
+        e.organizer_id,
+        c.name AS category_name,
+        org.name AS organizer_name,
+        org.email AS organizer_email
+      FROM registrations r
+      JOIN events e ON r.event_id = e.id
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN categories c ON e.category_id = c.id
+      LEFT JOIN users org ON e.organizer_id = org.id
+    `;
+
+    let params = [];
+
+    if (registrationId) {
+      query += ` WHERE r.id = ?`;
+      params.push(registrationId);
+    } else if (eventId) {
+      query += ` WHERE r.event_id = ? AND r.user_id = ?`;
+      params.push(eventId, userId);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Event ID or Registration ID is required.'
+      });
+    }
+
+    const [rows] = await pool.query(query, params);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Volunteer application pass not found.'
+      });
+    }
+
+    const pass = rows[0];
+
+    // SECURITY CHECK:
+    // If student: must be the owner of the application (pass.user_id === req.user.id)
+    // If organizer: must be the assigned organizer of the event (pass.organizer_id === req.user.id)
+    // If admin: allowed
+    if (userRole === 'student' && pass.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You cannot view another student’s volunteer pass.'
+      });
+    }
+
+    if (userRole === 'organizer' && pass.organizer_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You are not the assigned organizer for this event.'
+      });
+    }
+
+    const isApproved = pass.registration_status === 'approved';
+    const passCode = `REG-VOL-${new Date(pass.event_date).getFullYear()}-${String(pass.registration_id).padStart(5, '0')}`;
+
+    // Payload for dynamic QR code encoding (only active when approved)
+    const qrPayload = JSON.stringify({
+      type: 'CAMPUS_EVENT_VOLUNTEER_PASS',
+      pass_code: passCode,
+      registration_id: pass.registration_id,
+      event_id: pass.event_id,
+      event_title: pass.event_title,
+      student_id: pass.student_id,
+      student_name: pass.student_name,
+      student_roll: pass.student_roll_number || 'N/A',
+      student_department: pass.student_department || 'N/A',
+      event_date: pass.event_date,
+      start_time: pass.start_time,
+      venue: pass.venue,
+      status: pass.registration_status,
+      attendance_status: pass.attendance_status,
+      assigned_role_remarks: pass.organizer_remarks || 'Volunteer Duty Team',
+      issued_at: pass.registered_at
+    });
+
+    res.json({
+      success: true,
+      data: {
+        registration_id: pass.registration_id,
+        pass_code: passCode,
+        pass_type: 'volunteer',
+        qr_payload: isApproved ? qrPayload : null,
+        registration_status: pass.registration_status,
+        attendance_status: pass.attendance_status,
+        organizer_remarks: pass.organizer_remarks,
+        skills_notes: pass.skills_notes,
+        is_active: isApproved,
+        registered_at: pass.registered_at,
+        student: {
+          id: pass.student_id,
+          name: pass.student_name,
+          email: pass.student_email,
+          roll_number: pass.student_roll_number,
+          department: pass.student_department,
+          phone: pass.student_phone
+        },
+        event: {
+          id: pass.event_id,
+          title: pass.event_title,
+          description: pass.event_description,
+          event_date: pass.event_date,
+          start_time: pass.start_time,
+          end_time: pass.end_time,
+          venue: pass.venue,
+          status: pass.event_status,
+          category_name: pass.category_name,
+          banner_image: pass.banner_image,
+          organizer_name: pass.organizer_name,
+          organizer_email: pass.organizer_email
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerForEvent,
   getMyRegistrations,
   cancelRegistration,
   getEventRegistrations,
   updateRegistrationStatus,
-  updateAttendance
+  updateAttendance,
+  getVolunteerPass
 };
+

@@ -24,4 +24,13 @@ export const registrationService = {
   updateAttendance: async (id, attendanceData) => {
     return await axiosClient.patch(`/registrations/${id}/attendance`, attendanceData);
   },
+
+  getVolunteerPass: async (eventId) => {
+    return await axiosClient.get(`/registrations/${eventId}/pass`);
+  },
+
+  getVolunteerPassById: async (registrationId) => {
+    return await axiosClient.get(`/registrations/pass/${registrationId}`);
+  },
 };
+

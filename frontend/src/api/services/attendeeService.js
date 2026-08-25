@@ -16,4 +16,13 @@ export const attendeeService = {
   getEventAttendees: async (eventId) => {
     return await axiosClient.get(`/attendees/event/${eventId}`);
   },
+
+  getAttendeePass: async (eventId) => {
+    return await axiosClient.get(`/attendees/${eventId}/pass`);
+  },
+
+  getAttendeePassById: async (registrationId) => {
+    return await axiosClient.get(`/attendees/pass/${registrationId}`);
+  },
 };
+

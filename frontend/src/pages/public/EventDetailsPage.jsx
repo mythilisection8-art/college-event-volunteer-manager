@@ -9,6 +9,7 @@ import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
+import { QRRegistrationPassModal } from '../../components/attendee/QRRegistrationPassModal';
 import {
   Calendar,
   Clock,
@@ -25,8 +26,10 @@ import {
   Ticket,
   Sparkles,
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  QrCode
 } from 'lucide-react';
+
 
 export const EventDetailsPage = () => {
   const { id } = useParams();
@@ -40,12 +43,15 @@ export const EventDetailsPage = () => {
   // Attendee state
   const [submittingAttendee, setSubmittingAttendee] = useState(false);
   const [cancelAttendeeModalOpen, setCancelAttendeeModalOpen] = useState(false);
+  const [passModalOpen, setPassModalOpen] = useState(false);
 
   // Volunteer state
   const [applyVolunteerModalOpen, setApplyVolunteerModalOpen] = useState(false);
   const [cancelVolunteerModalOpen, setCancelVolunteerModalOpen] = useState(false);
+  const [volunteerPassModalOpen, setVolunteerPassModalOpen] = useState(false);
   const [skillsNotes, setSkillsNotes] = useState('');
   const [submittingVolunteer, setSubmittingVolunteer] = useState(false);
+
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -63,7 +69,8 @@ export const EventDetailsPage = () => {
 
   useEffect(() => {
     fetchEvent();
-  }, [fetchEvent]);
+  }, [fetchEvent, user?.id]);
+
 
   // Action 1: Register as Attendee
   const handleRegisterAttendee = async () => {
@@ -450,6 +457,15 @@ export const EventDetailsPage = () => {
                       </p>
                       <p className="text-[11px] text-emerald-700 mt-0.5">Your seat is confirmed.</p>
                     </div>
+
+                    <button
+                      onClick={() => setPassModalOpen(true)}
+                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm shadow-indigo-200 flex items-center justify-center gap-1.5"
+                    >
+                      <QrCode className="w-4 h-4" />
+                      <span>View QR Registration Pass</span>
+                    </button>
+
                     <button
                       onClick={() => setCancelAttendeeModalOpen(true)}
                       className="w-full py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors"
@@ -555,6 +571,17 @@ export const EventDetailsPage = () => {
                         </p>
                       )}
                     </div>
+
+                    {user_volunteer_status === 'approved' && (
+                      <button
+                        onClick={() => setVolunteerPassModalOpen(true)}
+                        className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm shadow-purple-200 flex items-center justify-center gap-1.5"
+                      >
+                        <QrCode className="w-4 h-4" />
+                        <span>View Volunteer QR Pass</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => setCancelVolunteerModalOpen(true)}
                       className="w-full py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors"
@@ -664,6 +691,24 @@ export const EventDetailsPage = () => {
         isDanger={true}
         loading={submittingVolunteer}
       />
+
+      {/* Attendee QR Registration Pass Modal */}
+      <QRRegistrationPassModal
+        isOpen={passModalOpen}
+        onClose={() => setPassModalOpen(false)}
+        passType="attendee"
+        eventId={id}
+      />
+
+      {/* Volunteer QR Registration Pass Modal */}
+      <QRRegistrationPassModal
+        isOpen={volunteerPassModalOpen}
+        onClose={() => setVolunteerPassModalOpen(false)}
+        passType="volunteer"
+        eventId={id}
+        registrationId={user_volunteer_registration?.id}
+      />
     </div>
   );
 };
+

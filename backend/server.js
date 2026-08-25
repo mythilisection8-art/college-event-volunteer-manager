@@ -2,10 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
-const { testConnection } = require('./config/db');
+const path = require('path');
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+const { testConnection } = require('./config/db');
+
 
 // Route imports
 const authRoutes = require('./routes/authRoutes');
@@ -68,6 +71,9 @@ const startServer = async () => {
   });
 };
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
 
 module.exports = app;
+

@@ -249,9 +249,156 @@ const getEventAttendees = async (req, res, next) => {
   }
 };
 
+// @desc    Get Attendee QR Registration Pass (Student ownership strictly enforced)
+// @route   GET /api/attendees/:eventId/pass OR GET /api/attendees/pass/:registrationId
+// @access  Private (Authenticated student, organizer of event, or admin)
+const getAttendeePass = async (req, res, next) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    let query = `
+      SELECT 
+        ar.id AS registration_id,
+        ar.event_id,
+        ar.user_id,
+        ar.status AS registration_status,
+        ar.registered_at,
+        ar.updated_at,
+        u.id AS student_id,
+        u.name AS student_name,
+        u.email AS student_email,
+        u.roll_number AS student_roll_number,
+        u.department AS student_department,
+        u.phone AS student_phone,
+        e.id AS event_id,
+        e.title AS event_title,
+        e.description AS event_description,
+        e.event_date,
+        e.start_time,
+        e.end_time,
+        e.venue,
+        e.status AS event_status,
+        e.banner_image,
+        e.organizer_id,
+        c.name AS category_name,
+        org.name AS organizer_name,
+        org.email AS organizer_email
+      FROM attendee_registrations ar
+      JOIN events e ON ar.event_id = e.id
+      JOIN users u ON ar.user_id = u.id
+      LEFT JOIN categories c ON e.category_id = c.id
+      LEFT JOIN users org ON e.organizer_id = org.id
+    `;
+
+    let params = [];
+
+    if (registrationId) {
+      query += ` WHERE ar.id = ?`;
+      params.push(registrationId);
+    } else if (eventId) {
+      query += ` WHERE ar.event_id = ? AND ar.user_id = ?`;
+      params.push(eventId, userId);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Event ID or Registration ID is required.'
+      });
+    }
+
+    const [rows] = await pool.query(query, params);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Attendee registration pass not found.'
+      });
+    }
+
+    const pass = rows[0];
+
+    // SECURITY CHECK:
+    // If student: must be the owner of the registration (pass.user_id === req.user.id)
+    // If organizer: must be the assigned organizer of the event (pass.organizer_id === req.user.id)
+    // If admin: allowed
+    if (userRole === 'student' && pass.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You cannot view another student’s registration pass.'
+      });
+    }
+
+    if (userRole === 'organizer' && pass.organizer_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You are not the assigned organizer for this event.'
+      });
+    }
+
+    // Format unique registration identifier
+    const passCode = `REG-ATT-${new Date(pass.event_date).getFullYear()}-${String(pass.registration_id).padStart(5, '0')}`;
+
+    // Payload for dynamic QR code encoding (no passwords or secrets)
+    const qrPayload = JSON.stringify({
+      type: 'CAMPUS_EVENT_ATTENDEE_PASS',
+      pass_code: passCode,
+      registration_id: pass.registration_id,
+      event_id: pass.event_id,
+      event_title: pass.event_title,
+      student_id: pass.student_id,
+      student_name: pass.student_name,
+      student_roll: pass.student_roll_number || 'N/A',
+      student_department: pass.student_department || 'N/A',
+      event_date: pass.event_date,
+      start_time: pass.start_time,
+      venue: pass.venue,
+      status: pass.registration_status,
+      issued_at: pass.registered_at
+    });
+
+    res.json({
+      success: true,
+      data: {
+        registration_id: pass.registration_id,
+        pass_code: passCode,
+        qr_payload: qrPayload,
+        registration_status: pass.registration_status,
+        is_active: pass.registration_status === 'registered',
+        registered_at: pass.registered_at,
+        student: {
+          id: pass.student_id,
+          name: pass.student_name,
+          email: pass.student_email,
+          roll_number: pass.student_roll_number,
+          department: pass.student_department,
+          phone: pass.student_phone
+        },
+        event: {
+          id: pass.event_id,
+          title: pass.event_title,
+          description: pass.event_description,
+          event_date: pass.event_date,
+          start_time: pass.start_time,
+          end_time: pass.end_time,
+          venue: pass.venue,
+          status: pass.event_status,
+          category_name: pass.category_name,
+          banner_image: pass.banner_image,
+          organizer_name: pass.organizer_name,
+          organizer_email: pass.organizer_email
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerAsAttendee,
   cancelAttendeeRegistration,
   getMyAttendingEvents,
-  getEventAttendees
+  getEventAttendees,
+  getAttendeePass
 };
