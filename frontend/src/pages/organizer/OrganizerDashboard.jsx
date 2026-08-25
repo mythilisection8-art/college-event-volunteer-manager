@@ -9,7 +9,7 @@ import {
   Calendar,
   Users,
   Clock,
-  PlusCircle,
+  Ticket,
   ArrowRight,
   Sparkles,
   MapPin,
@@ -55,16 +55,16 @@ export const OrganizerDashboard = () => {
             Welcome, {user?.name}! 🎯
           </h1>
           <p className="text-xs sm:text-sm text-indigo-200">
-            {user?.department || 'Event Organizing Committee'}
+            {user?.department || 'Event Organizing Committee'} • Manage volunteers and attendee rosters for your assigned events.
           </p>
         </div>
         <div className="flex items-center gap-3">
           <Link
-            to="/organizer/events/create"
+            to="/organizer/events"
             className="px-5 py-3 bg-white text-indigo-950 hover:bg-indigo-50 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
           >
-            <PlusCircle className="w-4 h-4 text-indigo-600" />
-            <span>Create New Event</span>
+            <Calendar className="w-4 h-4 text-indigo-600" />
+            <span>View Assigned Events</span>
           </Link>
         </div>
       </div>
@@ -72,9 +72,9 @@ export const OrganizerDashboard = () => {
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard
-          title="Total Events Created"
+          title="Assigned Events"
           value={totalEvents}
-          subtitle="All-time organized"
+          subtitle="Events under your lead"
           icon={Calendar}
           color="indigo"
         />
@@ -106,7 +106,7 @@ export const OrganizerDashboard = () => {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Calendar className="w-5 h-5 text-indigo-600" />
-            Your Organized Events & Volunteer Status
+            Your Assigned Events & Operations
           </h2>
           <Link
             to="/organizer/events"
@@ -120,16 +120,13 @@ export const OrganizerDashboard = () => {
         {loading ? (
           <LoadingSpinner text="Loading events..." />
         ) : events.length === 0 ? (
-          <div className="p-8 bg-white rounded-2xl border border-slate-200/80 text-center space-y-3">
-            <p className="text-sm text-slate-500">
-              You have not created any events yet.
+          <div className="p-8 bg-white rounded-2xl border border-slate-200/80 text-center space-y-2">
+            <p className="text-sm font-semibold text-slate-700">
+              No events currently assigned
             </p>
-            <Link
-              to="/organizer/events/create"
-              className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-sm"
-            >
-              Create Your First Event
-            </Link>
+            <p className="text-xs text-slate-500">
+              You will see events listed here once an administrator assigns you as the lead organizer.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -161,36 +158,37 @@ export const OrganizerDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Volunteer Metrics Box */}
+                  {/* Metrics Box */}
                   <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl text-center">
                     <div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">Approved</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">Attendees</p>
+                      <p className="text-sm font-extrabold text-indigo-600">{evt.registered_attendees_count || 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">Volunteers</p>
                       <p className="text-sm font-extrabold text-emerald-600">{evt.approved_count} / {evt.max_volunteers}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-slate-400 font-bold uppercase">Pending</p>
                       <p className="text-sm font-extrabold text-amber-600">{evt.pending_count}</p>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">Total Applied</p>
-                      <p className="text-sm font-extrabold text-slate-700">{evt.total_applications}</p>
-                    </div>
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                   <Link
-                    to={`/events/${evt.id}`}
-                    className="text-xs font-semibold text-slate-500 hover:text-indigo-600"
+                    to={`/organizer/events/${evt.id}/attendees`}
+                    className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1"
                   >
-                    View Public Page
+                    <Ticket className="w-3.5 h-3.5" />
+                    <span>Attendees</span>
                   </Link>
                   <Link
                     to={`/organizer/events/${evt.id}/volunteers`}
                     className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5"
                   >
                     <Users className="w-3.5 h-3.5" />
-                    <span>Manage Volunteers ({evt.pending_count} new)</span>
+                    <span>Volunteers ({evt.pending_count} new)</span>
                   </Link>
                 </div>
               </div>

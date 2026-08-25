@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { eventService } from '../../api/services/eventService';
 import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
-import { ConfirmModal } from '../../components/common/ConfirmModal';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
 import {
@@ -11,12 +10,9 @@ import {
   Clock,
   MapPin,
   Users,
-  PlusCircle,
-  Edit,
-  Trash2,
-  ExternalLink,
+  Ticket,
   Search,
-  CheckCircle2,
+  ExternalLink,
   ChevronRight
 } from 'lucide-react';
 
@@ -27,10 +23,6 @@ export const ManageEventsPage = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Delete modal state
-  const [selectedEventToDelete, setSelectedEventToDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     try {
@@ -39,7 +31,7 @@ export const ManageEventsPage = () => {
         setEvents(res.data);
       }
     } catch (err) {
-      showToast(err.message || 'Failed to load events', 'error');
+      showToast(err.message || 'Failed to load assigned events', 'error');
     } finally {
       setLoading(false);
     }
@@ -48,23 +40,6 @@ export const ManageEventsPage = () => {
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
-
-  const handleDeleteEvent = async () => {
-    if (!selectedEventToDelete) return;
-    setDeleting(true);
-    try {
-      const res = await eventService.deleteEvent(selectedEventToDelete.id);
-      if (res?.success) {
-        showToast(res.message || 'Event deleted successfully', 'info');
-        setSelectedEventToDelete(null);
-        fetchEvents();
-      }
-    } catch (err) {
-      showToast(err.message || 'Failed to delete event', 'error');
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   const filteredEvents = events.filter((evt) => {
     const matchesSearch =
@@ -80,19 +55,12 @@ export const ManageEventsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Manage Created Events
+            Assigned Campus Events
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Oversee your campus events, modify schedules, and manage volunteer assignments.
+            Oversee your assigned events, monitor attendee registrations, and manage volunteer applications.
           </p>
         </div>
-        <Link
-          to="/organizer/events/create"
-          className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm shadow-indigo-200 flex items-center gap-1.5 self-start sm:self-auto"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>Create New Event</span>
-        </Link>
       </div>
 
       {/* Search & Filter Bar */}
@@ -124,13 +92,11 @@ export const ManageEventsPage = () => {
 
       {/* Events Table / Card List */}
       {loading ? (
-        <LoadingSpinner text="Loading events..." />
+        <LoadingSpinner text="Loading your assigned events..." />
       ) : filteredEvents.length === 0 ? (
         <EmptyState
-          title="No Events Found"
-          description="No events match your search or filter parameters."
-          actionLabel="Create Event"
-          onAction={() => window.location.href = '/organizer/events/create'}
+          title="No Assigned Events"
+          description="You currently have no events assigned to your organizer account matching these filters."
         />
       ) : (
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
@@ -140,6 +106,7 @@ export const ManageEventsPage = () => {
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3.5 px-6">Event Info</th>
                   <th className="py-3.5 px-6">Date & Venue</th>
+                  <th className="py-3.5 px-6">Attendees</th>
                   <th className="py-3.5 px-6">Volunteers</th>
                   <th className="py-3.5 px-6">Status</th>
                   <th className="py-3.5 px-6 text-right">Actions</th>
@@ -158,6 +125,14 @@ export const ManageEventsPage = () => {
                     <td className="py-4 px-6">
                       <p className="font-semibold text-slate-800">{new Date(evt.event_date).toLocaleDateString()}</p>
                       <p className="text-slate-400 text-[11px] truncate max-w-[180px]">{evt.venue}</p>
+                    </td>
+
+                    {/* Attendees */}
+                    <td className="py-4 px-6">
+                      <span className="font-bold text-indigo-600">
+                        {evt.registered_attendees_count || 0} / {evt.max_attendees || 100}
+                      </span>
+                      <span className="text-slate-400 block text-[10px]">registered</span>
                     </td>
 
                     {/* Volunteers */}
@@ -180,29 +155,22 @@ export const ManageEventsPage = () => {
                     {/* Actions */}
                     <td className="py-4 px-6 text-right space-x-2 whitespace-nowrap">
                       <Link
+                        to={`/organizer/events/${evt.id}/attendees`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-xl transition-colors"
+                        title="View Registered Attendees"
+                      >
+                        <Ticket className="w-3.5 h-3.5" />
+                        <span>Attendees</span>
+                      </Link>
+
+                      <Link
                         to={`/organizer/events/${evt.id}/volunteers`}
                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition-colors"
-                        title="Manage Volunteers"
+                        title="Manage Volunteer Applications"
                       >
                         <Users className="w-3.5 h-3.5" />
                         <span>Volunteers</span>
                       </Link>
-
-                      <Link
-                        to={`/organizer/events/edit/${evt.id}`}
-                        className="inline-flex items-center p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
-                        title="Edit Event"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Link>
-
-                      <button
-                        onClick={() => setSelectedEventToDelete(evt)}
-                        className="inline-flex items-center p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors"
-                        title="Delete Event"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </td>
                   </tr>
                 ))}
@@ -211,18 +179,6 @@ export const ManageEventsPage = () => {
           </div>
         </div>
       )}
-
-      {/* Delete Confirm Modal */}
-      <ConfirmModal
-        isOpen={Boolean(selectedEventToDelete)}
-        onClose={() => setSelectedEventToDelete(null)}
-        onConfirm={handleDeleteEvent}
-        title="Delete Event"
-        message={`Are you sure you want to permanently delete "${selectedEventToDelete?.title}"? All associated volunteer registrations will also be removed.`}
-        confirmText="Delete Event"
-        isDanger={true}
-        loading={deleting}
-      />
     </div>
   );
 };

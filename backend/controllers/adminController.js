@@ -6,7 +6,44 @@ const { pool } = require('../config/db');
 // @access  Private (Admin)
 const getAdminStats = async (req, res, next) => {
   try {
-    // 1. User counts
+    const { category_id, status, start_date, end_date, event_id } = req.query;
+
+    let eventWhereClauses = [];
+    let eventQueryParams = [];
+
+    // Filter by category
+    if (category_id && category_id !== 'all') {
+      eventWhereClauses.push('e.category_id = ?');
+      eventQueryParams.push(parseInt(category_id, 10));
+    }
+
+    // Filter by status
+    if (status && status !== 'all') {
+      eventWhereClauses.push('e.status = ?');
+      eventQueryParams.push(status);
+    }
+
+    // Filter by start date
+    if (start_date && start_date.trim() !== '') {
+      eventWhereClauses.push('e.event_date >= ?');
+      eventQueryParams.push(start_date.trim());
+    }
+
+    // Filter by end date
+    if (end_date && end_date.trim() !== '') {
+      eventWhereClauses.push('e.event_date <= ?');
+      eventQueryParams.push(end_date.trim());
+    }
+
+    // Filter by specific event
+    if (event_id && event_id !== 'all') {
+      eventWhereClauses.push('e.id = ?');
+      eventQueryParams.push(parseInt(event_id, 10));
+    }
+
+    const eventWhereSql = eventWhereClauses.length > 0 ? `WHERE ${eventWhereClauses.join(' AND ')}` : '';
+
+    // 1. User counts (platform wide)
     const [userCounts] = await pool.query(`
       SELECT 
         COUNT(*) AS total_users,
@@ -18,68 +55,77 @@ const getAdminStats = async (req, res, next) => {
       FROM users
     `);
 
-    // 2. Event counts and total capacities
+    // 2. Event counts and total capacities (filtered)
     const [eventCounts] = await pool.query(`
       SELECT 
         COUNT(*) AS total_events,
-        SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published_events,
-        SUM(CASE WHEN status = 'ongoing' THEN 1 ELSE 0 END) AS ongoing_events,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_events,
-        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_events,
-        SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_events,
-        SUM(CASE WHEN event_date >= CURDATE() AND status IN ('published', 'ongoing') THEN 1 ELSE 0 END) AS upcoming_events,
-        COALESCE(SUM(max_attendees), 0) AS total_seat_capacity,
-        COALESCE(SUM(max_volunteers), 0) AS total_volunteer_quota
-      FROM events
-    `);
+        SUM(CASE WHEN e.status = 'published' THEN 1 ELSE 0 END) AS published_events,
+        SUM(CASE WHEN e.status = 'ongoing' THEN 1 ELSE 0 END) AS ongoing_events,
+        SUM(CASE WHEN e.status = 'completed' THEN 1 ELSE 0 END) AS completed_events,
+        SUM(CASE WHEN e.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_events,
+        SUM(CASE WHEN e.status = 'draft' THEN 1 ELSE 0 END) AS draft_events,
+        SUM(CASE WHEN e.event_date >= CURDATE() AND e.status IN ('published', 'ongoing') THEN 1 ELSE 0 END) AS upcoming_events,
+        COALESCE(SUM(e.max_attendees), 0) AS total_seat_capacity,
+        COALESCE(SUM(e.max_volunteers), 0) AS total_volunteer_quota
+      FROM events e
+      ${eventWhereSql}
+    `, eventQueryParams);
 
-    // 3. Attendee Registration counts
+    // 3. Attendee Registration counts (filtered by events)
     const [attendeeCounts] = await pool.query(`
       SELECT 
-        COUNT(*) AS total_attendee_registrations,
-        SUM(CASE WHEN status = 'registered' THEN 1 ELSE 0 END) AS active_attendees,
-        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_attendees
-      FROM attendee_registrations
-    `);
+        COUNT(ar.id) AS total_attendee_registrations,
+        SUM(CASE WHEN ar.status = 'registered' THEN 1 ELSE 0 END) AS active_attendees,
+        SUM(CASE WHEN ar.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_attendees
+      FROM attendee_registrations ar
+      JOIN events e ON ar.event_id = e.id
+      ${eventWhereSql}
+    `, eventQueryParams);
 
-    // 4. Volunteer Application counts
+    // 4. Volunteer Application counts (filtered by events)
     const [volunteerCounts] = await pool.query(`
       SELECT 
-        COUNT(*) AS total_volunteer_applications,
-        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved_volunteers,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_volunteers,
-        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected_volunteers,
-        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_volunteers,
-        SUM(CASE WHEN attendance_status = 'completed' OR attendance_status = 'present' THEN 1 ELSE 0 END) AS attended_volunteers
-      FROM registrations
-    `);
+        COUNT(r.id) AS total_volunteer_applications,
+        SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_volunteers,
+        SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) AS pending_volunteers,
+        SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_volunteers,
+        SUM(CASE WHEN r.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_volunteers,
+        SUM(CASE WHEN r.attendance_status = 'completed' OR r.attendance_status = 'present' THEN 1 ELSE 0 END) AS attended_volunteers
+      FROM registrations r
+      JOIN events e ON r.event_id = e.id
+      ${eventWhereSql}
+    `, eventQueryParams);
 
-    // 5. Popular Events ranking (by registered attendees)
+    // 5. Popular Events ranking (by registered attendees & volunteers)
     const [popularEvents] = await pool.query(`
       SELECT 
         e.id, 
         e.title, 
         e.event_date,
         e.venue,
+        e.status,
         e.max_attendees,
         e.max_volunteers,
         c.name AS category_name,
         u.name AS organizer_name,
         (SELECT COUNT(*) FROM attendee_registrations ar WHERE ar.event_id = e.id AND ar.status = 'registered') AS attendee_count,
-        (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved_volunteers_count
+        (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved_volunteers_count,
+        (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status != 'cancelled') AS total_volunteer_applications
       FROM events e
       LEFT JOIN categories c ON e.category_id = c.id
       LEFT JOIN users u ON e.organizer_id = u.id
+      ${eventWhereSql}
       ORDER BY attendee_count DESC, approved_volunteers_count DESC
-      LIMIT 6
-    `);
+      LIMIT 8
+    `, eventQueryParams);
 
     // 6. Department breakdown
     const [departmentStats] = await pool.query(`
       SELECT 
         COALESCE(u.department, 'General / Other') AS department,
         COUNT(DISTINCT ar.id) AS attendee_registrations_count,
-        COUNT(DISTINCT r.id) AS volunteer_applications_count
+        COUNT(DISTINCT r.id) AS volunteer_applications_count,
+        SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_volunteers_count
       FROM users u
       LEFT JOIN attendee_registrations ar ON u.id = ar.user_id AND ar.status = 'registered'
       LEFT JOIN registrations r ON u.id = r.user_id
@@ -122,35 +168,94 @@ const getAdminStats = async (req, res, next) => {
       LIMIT 5
     `);
 
-    // KPI calculations
-    const totalSeats = parseInt(eventCounts[0].total_seat_capacity || 0, 10);
-    const activeAttendees = parseInt(attendeeCounts[0].active_attendees || 0, 10);
+    // KPI calculations with safe division by zero handling
+    const totalSeats = parseInt(eventCounts[0]?.total_seat_capacity || 0, 10);
+    const activeAttendees = parseInt(attendeeCounts[0]?.active_attendees || 0, 10);
+    const totalAttendeeRegs = parseInt(attendeeCounts[0]?.total_attendee_registrations || 0, 10);
+    const cancelledAttendees = parseInt(attendeeCounts[0]?.cancelled_attendees || 0, 10);
     const seatOccupancyRate = totalSeats > 0 ? Math.min(100, Math.round((activeAttendees / totalSeats) * 100)) : 0;
 
-    const totalVolApps = parseInt(volunteerCounts[0].total_volunteer_applications || 0, 10);
-    const approvedVolunteers = parseInt(volunteerCounts[0].approved_volunteers || 0, 10);
-    const volunteerAcceptanceRate = totalVolApps > 0 ? Math.round((approvedVolunteers / totalVolApps) * 100) : 0;
+    const totalVolApps = parseInt(volunteerCounts[0]?.total_volunteer_applications || 0, 10);
+    const approvedVolunteers = parseInt(volunteerCounts[0]?.approved_volunteers || 0, 10);
+    const pendingVolunteers = parseInt(volunteerCounts[0]?.pending_volunteers || 0, 10);
+    const rejectedVolunteers = parseInt(volunteerCounts[0]?.rejected_volunteers || 0, 10);
+    const cancelledVolunteers = parseInt(volunteerCounts[0]?.cancelled_volunteers || 0, 10);
+    const attendedVolunteers = parseInt(volunteerCounts[0]?.attended_volunteers || 0, 10);
+
+    const volunteerApprovalRate = totalVolApps > 0 ? Math.min(100, Math.round((approvedVolunteers / totalVolApps) * 100)) : 0;
+    const volunteerCompletionRate = approvedVolunteers > 0 ? Math.min(100, Math.round((attendedVolunteers / approvedVolunteers) * 100)) : 0;
 
     res.json({
       success: true,
       data: {
-        users: userCounts[0],
-        events: eventCounts[0],
-        attendees: attendeeCounts[0],
-        volunteers: volunteerCounts[0],
+        users: {
+          total_users: parseInt(userCounts[0]?.total_users || 0, 10),
+          total_students: parseInt(userCounts[0]?.total_students || 0, 10),
+          total_organizers: parseInt(userCounts[0]?.total_organizers || 0, 10),
+          total_admins: parseInt(userCounts[0]?.total_admins || 0, 10),
+          active_users: parseInt(userCounts[0]?.active_users || 0, 10),
+          blocked_users: parseInt(userCounts[0]?.blocked_users || 0, 10),
+        },
+        events: {
+          total_events: parseInt(eventCounts[0]?.total_events || 0, 10),
+          published_events: parseInt(eventCounts[0]?.published_events || 0, 10),
+          ongoing_events: parseInt(eventCounts[0]?.ongoing_events || 0, 10),
+          completed_events: parseInt(eventCounts[0]?.completed_events || 0, 10),
+          cancelled_events: parseInt(eventCounts[0]?.cancelled_events || 0, 10),
+          draft_events: parseInt(eventCounts[0]?.draft_events || 0, 10),
+          upcoming_events: parseInt(eventCounts[0]?.upcoming_events || 0, 10),
+          total_seat_capacity: totalSeats,
+          total_volunteer_quota: parseInt(eventCounts[0]?.total_volunteer_quota || 0, 10),
+        },
+        attendees: {
+          total_attendee_registrations: totalAttendeeRegs,
+          active_attendees: activeAttendees,
+          cancelled_attendees: cancelledAttendees,
+          total_seats: totalSeats,
+          seats_remaining: Math.max(0, totalSeats - activeAttendees),
+          seat_occupancy_rate: seatOccupancyRate,
+        },
+        volunteers: {
+          total_volunteer_applications: totalVolApps,
+          approved_volunteers: approvedVolunteers,
+          pending_volunteers: pendingVolunteers,
+          rejected_volunteers: rejectedVolunteers,
+          cancelled_volunteers: cancelledVolunteers,
+          attended_volunteers: attendedVolunteers,
+          approval_rate: volunteerApprovalRate,
+          completion_rate: volunteerCompletionRate,
+        },
         kpis: {
           seatOccupancyRate,
-          volunteerAcceptanceRate,
+          volunteerApprovalRate,
+          volunteerAcceptanceRate: volunteerApprovalRate,
+          volunteerCompletionRate,
           totalSeats,
           activeAttendees,
           approvedVolunteers,
-          totalVolApps
+          pendingVolunteers,
+          rejectedVolunteers,
+          attendedVolunteers,
+          totalVolApps,
+          totalEvents: parseInt(eventCounts[0]?.total_events || 0, 10),
+          upcomingEvents: parseInt(eventCounts[0]?.upcoming_events || 0, 10),
+          ongoingEvents: parseInt(eventCounts[0]?.ongoing_events || 0, 10),
+          completedEvents: parseInt(eventCounts[0]?.completed_events || 0, 10),
+          cancelledEvents: parseInt(eventCounts[0]?.cancelled_events || 0, 10),
+          totalAttendeeRegistrations: totalAttendeeRegs,
         },
         popularEvents,
         departmentStats,
         recentAttendees,
         recentVolunteers,
-        recentUsers
+        recentUsers,
+        filters: {
+          category_id: category_id || 'all',
+          status: status || 'all',
+          start_date: start_date || null,
+          end_date: end_date || null,
+          event_id: event_id || 'all'
+        }
       }
     });
   } catch (error) {

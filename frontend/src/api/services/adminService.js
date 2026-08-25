@@ -1,8 +1,8 @@
 import axiosClient from '../axiosClient';
 
 export const adminService = {
-  getStats: async () => {
-    return await axiosClient.get('/admin/stats');
+  getStats: async (params = {}) => {
+    return await axiosClient.get('/admin/stats', { params });
   },
 
   getUsers: async (params = {}) => {

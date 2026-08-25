@@ -93,7 +93,7 @@ export const EventManagementPage = () => {
           </p>
         </div>
         <Link
-          to="/organizer/events/create"
+          to="/admin/events/create"
           className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-1.5 self-start sm:self-auto"
         >
           <PlusCircle className="w-4 h-4" />
@@ -148,7 +148,7 @@ export const EventManagementPage = () => {
                   <th className="py-3.5 px-6">Event & Category</th>
                   <th className="py-3.5 px-6">Organizer</th>
                   <th className="py-3.5 px-6">Date & Venue</th>
-                  <th className="py-3.5 px-6">Volunteers</th>
+                  <th className="py-3.5 px-6">Attendees & Volunteers</th>
                   <th className="py-3.5 px-6">Status</th>
                   <th className="py-3.5 px-6 text-right">Actions</th>
                 </tr>
@@ -174,12 +174,16 @@ export const EventManagementPage = () => {
                       <p className="text-slate-400 text-[11px] truncate max-w-[160px]">{evt.venue}</p>
                     </td>
 
-                    {/* Volunteers */}
+                    {/* Attendees & Volunteers */}
                     <td className="py-4 px-6">
-                      <span className="font-bold text-slate-800">{evt.approved_volunteers_count || 0} / {evt.max_volunteers}</span>
-                      <span className="text-slate-400 block text-[10px]">
-                        {evt.total_registrations_count || 0} applicants
-                      </span>
+                      <p className="font-bold text-indigo-600">
+                        {evt.registered_attendees_count || 0} / {evt.max_attendees || 100}{' '}
+                        <span className="text-[10px] text-slate-400 font-normal">attendees</span>
+                      </p>
+                      <p className="text-purple-600 font-semibold text-[11px]">
+                        {evt.approved_volunteers_count || 0} / {evt.max_volunteers || 10}{' '}
+                        <span className="text-[10px] text-slate-400 font-normal">volunteers</span>
+                      </p>
                     </td>
 
                     {/* Status */}
@@ -190,8 +194,17 @@ export const EventManagementPage = () => {
                     {/* Actions */}
                     <td className="py-4 px-6 text-right space-x-1.5 whitespace-nowrap">
                       <Link
+                        to={`/organizer/events/${evt.id}/attendees`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-xl transition-colors"
+                        title="View Registered Attendees"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Attendees</span>
+                      </Link>
+
+                      <Link
                         to={`/organizer/events/${evt.id}/volunteers`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition-colors"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition-colors"
                         title="View & Moderate Volunteers"
                       >
                         <Users className="w-3.5 h-3.5" />
@@ -199,7 +212,7 @@ export const EventManagementPage = () => {
                       </Link>
 
                       <Link
-                        to={`/organizer/events/edit/${evt.id}`}
+                        to={`/admin/events/edit/${evt.id}`}
                         className="inline-flex items-center p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
                         title="Edit Event"
                       >

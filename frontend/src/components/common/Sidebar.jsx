@@ -28,8 +28,7 @@ export const Sidebar = () => {
 
   const organizerLinks = [
     { name: 'Overview', path: '/organizer/dashboard', icon: LayoutDashboard },
-    { name: 'Manage Events', path: '/organizer/events', icon: Calendar },
-    { name: 'Create Event', path: '/organizer/events/create', icon: PlusCircle },
+    { name: 'Assigned Events', path: '/organizer/events', icon: Calendar },
     { name: 'Explore All Events', path: '/events', icon: Sparkles },
     { name: 'Organizer Profile', path: '/student/profile', icon: User },
   ];
@@ -38,6 +37,7 @@ export const Sidebar = () => {
     { name: 'Admin Overview', path: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'User Management', path: '/admin/users', icon: Users },
     { name: 'Event Directory', path: '/admin/events', icon: Calendar },
+    { name: 'Create Event', path: '/admin/events/create', icon: PlusCircle },
     { name: 'All Registrations', path: '/admin/registrations', icon: FileCheck },
     { name: 'System Analytics', path: '/admin/stats', icon: BarChart3 },
     { name: 'Admin Profile', path: '/student/profile', icon: Shield },

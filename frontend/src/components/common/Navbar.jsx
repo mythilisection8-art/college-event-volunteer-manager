@@ -85,38 +85,41 @@ export const Navbar = () => {
             )}
 
             {isAuthenticated && isOrganizer && (
-              <>
-                <Link
-                  to="/organizer/events"
-                  className={`px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors ${
-                    isActive('/organizer/events')
-                      ? 'bg-indigo-50 text-indigo-700'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  Manage Events
-                </Link>
-                <Link
-                  to="/organizer/events/create"
-                  className="px-3.5 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors flex items-center gap-1.5"
-                >
-                  <PlusCircle className="w-4 h-4" />
-                  Create Event
-                </Link>
-              </>
-            )}
-
-            {isAuthenticated && isAdmin && (
               <Link
-                to="/admin/users"
+                to="/organizer/events"
                 className={`px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors ${
-                  isActive('/admin/users')
+                  isActive('/organizer/events')
                     ? 'bg-indigo-50 text-indigo-700'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                User Directory
+                Assigned Events
               </Link>
+            )}
+
+            {isAuthenticated && isAdmin && (
+              <>
+                <Link
+                  to="/admin/events"
+                  className={`px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors ${
+                    isActive('/admin/events')
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  Event Directory
+                </Link>
+                <Link
+                  to="/admin/users"
+                  className={`px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors ${
+                    isActive('/admin/users')
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  User Directory
+                </Link>
+              </>
             )}
           </nav>
 
@@ -260,7 +263,7 @@ export const Navbar = () => {
                   onClick={() => setMobileMenuOpen(false)}
                   className="block px-3 py-2 text-base font-semibold text-slate-700 rounded-xl hover:bg-slate-50"
                 >
-                  Manage Events
+                  Assigned Events
                 </Link>
               )}
               {isAdmin && (
