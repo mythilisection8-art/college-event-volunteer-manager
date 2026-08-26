@@ -23,13 +23,13 @@ const getAdminStats = async (req, res, next) => {
       eventQueryParams.push(status);
     }
 
-    // Filter by start date
+    // Filter by start date (event date from)
     if (start_date && start_date.trim() !== '') {
       eventWhereClauses.push('e.event_date >= ?');
       eventQueryParams.push(start_date.trim());
     }
 
-    // Filter by end date
+    // Filter by end date (event date to)
     if (end_date && end_date.trim() !== '') {
       eventWhereClauses.push('e.event_date <= ?');
       eventQueryParams.push(end_date.trim());
@@ -90,14 +90,14 @@ const getAdminStats = async (req, res, next) => {
         SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) AS pending_volunteers,
         SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_volunteers,
         SUM(CASE WHEN r.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_volunteers,
-        SUM(CASE WHEN r.attendance_status = 'completed' OR r.attendance_status = 'present' THEN 1 ELSE 0 END) AS attended_volunteers
+        SUM(CASE WHEN r.attendance_status IN ('present', 'completed') THEN 1 ELSE 0 END) AS attended_volunteers
       FROM registrations r
       JOIN events e ON r.event_id = e.id
       ${eventWhereSql}
     `, eventQueryParams);
 
     // 5. Popular Events ranking (by registered attendees & volunteers)
-    const [popularEvents] = await pool.query(`
+    const [popularEventsRows] = await pool.query(`
       SELECT 
         e.id, 
         e.title, 
@@ -109,33 +109,131 @@ const getAdminStats = async (req, res, next) => {
         c.name AS category_name,
         u.name AS organizer_name,
         (SELECT COUNT(*) FROM attendee_registrations ar WHERE ar.event_id = e.id AND ar.status = 'registered') AS attendee_count,
+        (SELECT COUNT(*) FROM attendee_registrations ar WHERE ar.event_id = e.id) AS total_attendee_registrations,
         (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved_volunteers_count,
         (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status != 'cancelled') AS total_volunteer_applications
       FROM events e
       LEFT JOIN categories c ON e.category_id = c.id
       LEFT JOIN users u ON e.organizer_id = u.id
       ${eventWhereSql}
-      ORDER BY attendee_count DESC, approved_volunteers_count DESC
-      LIMIT 8
+      ORDER BY attendee_count DESC, approved_volunteers_count DESC, e.event_date ASC
+      LIMIT 10
     `, eventQueryParams);
 
-    // 6. Department breakdown
+    const popularEvents = popularEventsRows.map((evt) => {
+      const maxAttendees = parseInt(evt.max_attendees || 0, 10);
+      const activeAtt = parseInt(evt.attendee_count || 0, 10);
+      const occupancyRate = maxAttendees > 0 ? Math.min(100, Math.round((activeAtt / maxAttendees) * 100)) : 0;
+      return {
+        ...evt,
+        occupancy_percentage: occupancyRate
+      };
+    });
+
+    // 6. Category Performance & Participation
+    const [categoryStats] = await pool.query(`
+      SELECT 
+        c.id,
+        c.name AS category_name,
+        c.icon,
+        COUNT(DISTINCT e.id) AS event_count,
+        COALESCE(SUM(e.max_attendees), 0) AS total_capacity,
+        COALESCE(SUM(att.active_attendees), 0) AS total_attendees,
+        COALESCE(SUM(vol.approved_volunteers), 0) AS approved_volunteers,
+        COALESCE(SUM(vol.total_volunteer_apps), 0) AS total_volunteer_applications
+      FROM categories c
+      JOIN events e ON e.category_id = c.id
+      LEFT JOIN (
+        SELECT event_id, COUNT(*) AS active_attendees 
+        FROM attendee_registrations 
+        WHERE status = 'registered' 
+        GROUP BY event_id
+      ) att ON att.event_id = e.id
+      LEFT JOIN (
+        SELECT 
+          event_id, 
+          SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved_volunteers,
+          COUNT(*) AS total_volunteer_apps
+        FROM registrations 
+        GROUP BY event_id
+      ) vol ON vol.event_id = e.id
+      ${eventWhereSql}
+      GROUP BY c.id, c.name, c.icon
+      ORDER BY total_attendees DESC, event_count DESC
+    `, eventQueryParams);
+
+    // 7. Department Participation Breakdown (Cartesian-safe)
     const [departmentStats] = await pool.query(`
       SELECT 
-        COALESCE(u.department, 'General / Other') AS department,
-        COUNT(DISTINCT ar.id) AS attendee_registrations_count,
-        COUNT(DISTINCT r.id) AS volunteer_applications_count,
-        SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_volunteers_count
-      FROM users u
-      LEFT JOIN attendee_registrations ar ON u.id = ar.user_id AND ar.status = 'registered'
-      LEFT JOIN registrations r ON u.id = r.user_id
-      WHERE u.role = 'student'
-      GROUP BY u.department
-      ORDER BY (attendee_registrations_count + volunteer_applications_count) DESC
-      LIMIT 6
-    `);
+        dept.department,
+        COALESCE(att.attendee_count, 0) AS attendee_registrations_count,
+        COALESCE(vol.volunteer_count, 0) AS volunteer_applications_count,
+        COALESCE(vol.approved_count, 0) AS approved_volunteers_count,
+        (COALESCE(att.attendee_count, 0) + COALESCE(vol.volunteer_count, 0)) AS total_participation
+      FROM (
+        SELECT DISTINCT department FROM users WHERE role = 'student' AND department IS NOT NULL AND department != ''
+      ) dept
+      LEFT JOIN (
+        SELECT u.department, COUNT(DISTINCT ar.id) AS attendee_count
+        FROM attendee_registrations ar
+        JOIN users u ON ar.user_id = u.id
+        JOIN events e ON ar.event_id = e.id
+        WHERE ar.status = 'registered' ${eventWhereClauses.length > 0 ? `AND ${eventWhereClauses.join(' AND ')}` : ''}
+        GROUP BY u.department
+      ) att ON dept.department = att.department
+      LEFT JOIN (
+        SELECT u.department, 
+               COUNT(DISTINCT r.id) AS volunteer_count,
+               SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_count
+        FROM registrations r
+        JOIN users u ON r.user_id = u.id
+        JOIN events e ON r.event_id = e.id
+        ${eventWhereSql}
+        GROUP BY u.department
+      ) vol ON dept.department = vol.department
+      WHERE (COALESCE(att.attendee_count, 0) + COALESCE(vol.volunteer_count, 0)) > 0
+      ORDER BY total_participation DESC, attendee_registrations_count DESC
+    `, [...eventQueryParams, ...eventQueryParams]);
 
-    // 7. Recent Attendee and Volunteer Activities
+    // 8. Participation Trends by Registration Date
+    const [registrationTrends] = await pool.query(`
+      SELECT 
+        t.reg_date,
+        DATE_FORMAT(t.reg_date, '%b %d') AS short_date,
+        DATE_FORMAT(t.reg_date, '%b %d, %Y') AS formatted_date,
+        COALESCE(att.attendee_count, 0) AS attendee_registrations,
+        COALESCE(vol.volunteer_count, 0) AS volunteer_applications,
+        (COALESCE(att.attendee_count, 0) + COALESCE(vol.volunteer_count, 0)) AS total_registrations
+      FROM (
+        SELECT DATE(ar.registered_at) AS reg_date
+        FROM attendee_registrations ar
+        JOIN events e ON ar.event_id = e.id
+        ${eventWhereSql}
+        UNION
+        SELECT DATE(r.registered_at) AS reg_date
+        FROM registrations r
+        JOIN events e ON r.event_id = e.id
+        ${eventWhereSql}
+      ) t
+      LEFT JOIN (
+        SELECT DATE(ar.registered_at) AS reg_date, COUNT(*) AS attendee_count
+        FROM attendee_registrations ar
+        JOIN events e ON ar.event_id = e.id
+        ${eventWhereSql}
+        GROUP BY DATE(ar.registered_at)
+      ) att ON t.reg_date = att.reg_date
+      LEFT JOIN (
+        SELECT DATE(r.registered_at) AS reg_date, COUNT(*) AS volunteer_count
+        FROM registrations r
+        JOIN events e ON r.event_id = e.id
+        ${eventWhereSql}
+        GROUP BY DATE(r.registered_at)
+      ) vol ON t.reg_date = vol.reg_date
+      WHERE t.reg_date IS NOT NULL
+      ORDER BY t.reg_date ASC
+    `, [...eventQueryParams, ...eventQueryParams, ...eventQueryParams, ...eventQueryParams]);
+
+    // 9. Recent Attendee and Volunteer Activities
     const [recentAttendees] = await pool.query(`
       SELECT 
         ar.id, ar.status, ar.registered_at,
@@ -160,7 +258,7 @@ const getAdminStats = async (req, res, next) => {
       LIMIT 5
     `);
 
-    // 8. Recent Users
+    // 10. Recent Users
     const [recentUsers] = await pool.query(`
       SELECT id, name, email, role, department, status, created_at
       FROM users
@@ -245,7 +343,9 @@ const getAdminStats = async (req, res, next) => {
           totalAttendeeRegistrations: totalAttendeeRegs,
         },
         popularEvents,
+        categoryStats,
         departmentStats,
+        registrationTrends,
         recentAttendees,
         recentVolunteers,
         recentUsers,
