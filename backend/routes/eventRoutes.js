@@ -8,6 +8,7 @@ const {
   deleteEvent,
   getOrganizerEvents
 } = require('../controllers/eventController');
+const { getPersonalizedRecommendations } = require('../controllers/recommendationController');
 const { authenticate, optionalAuthenticate } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
 const { validate } = require('../middleware/validateMiddleware');
@@ -29,6 +30,7 @@ const eventValidation = [
 
 // Public / Authenticated Browsing Routes
 router.get('/', optionalAuthenticate, getEvents);
+router.get('/recommendations', authenticate, getPersonalizedRecommendations);
 router.get('/organizer/my-events', authenticate, authorize('organizer', 'admin'), getOrganizerEvents);
 router.get('/:id', optionalAuthenticate, getEventById);
 

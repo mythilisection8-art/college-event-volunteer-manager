@@ -24,4 +24,8 @@ export const eventService = {
   getOrganizerEvents: async () => {
     return await axiosClient.get('/events/organizer/my-events');
   },
+
+  getRecommendations: async () => {
+    return await axiosClient.get('/events/recommendations');
+  },
 };

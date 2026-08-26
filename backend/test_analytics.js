@@ -1,4 +1,4 @@
-﻿const http = require('http');
+const http = require('http');
 const app = require('./server');
 
 const PORT = 5098;
@@ -196,12 +196,10 @@ async function runAnalyticsTests() {
     allPassed = false;
   } finally {
     if (server) {
-      server.close(() => {
-        process.exit(allPassed ? 0 : 1);
-      });
-    } else {
-      process.exit(allPassed ? 0 : 1);
+      if (server.closeAllConnections) server.closeAllConnections();
+      server.close();
     }
+    process.exit(allPassed ? 0 : 1);
   }
 }
 

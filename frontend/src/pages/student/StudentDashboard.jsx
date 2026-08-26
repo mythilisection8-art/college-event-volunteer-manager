@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { attendeeService } from '../../api/services/attendeeService';
 import { registrationService } from '../../api/services/registrationService';
+import { eventService } from '../../api/services/eventService';
 import { StatCard } from '../../components/common/StatCard';
 import { Badge } from '../../components/common/Badge';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
@@ -19,35 +20,47 @@ import {
   ChevronRight,
   Ticket,
   Users,
-  QrCode
+  QrCode,
+  Compass,
+  Star,
+  Flame,
+  Zap
 } from 'lucide-react';
 
 export const StudentDashboard = () => {
   const { user } = useAuth();
   const [attendingEvents, setAttendingEvents] = useState([]);
   const [volunteerApps, setVolunteerApps] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [recLoading, setRecLoading] = useState(true);
   const [selectedPass, setSelectedPass] = useState(null);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);
+      setRecLoading(true);
       try {
-        const [attendeeRes, volunteerRes] = await Promise.all([
+        const [attendeeRes, volunteerRes, recRes] = await Promise.allSettled([
           attendeeService.getMyAttendingEvents(),
-          registrationService.getMyRegistrations()
+          registrationService.getMyRegistrations(),
+          eventService.getRecommendations()
         ]);
 
-        if (attendeeRes?.success) {
-          setAttendingEvents(attendeeRes.data || []);
+        if (attendeeRes.status === 'fulfilled' && attendeeRes.value?.success) {
+          setAttendingEvents(attendeeRes.value.data || []);
         }
-        if (volunteerRes?.success) {
-          setVolunteerApps(volunteerRes.data || []);
+        if (volunteerRes.status === 'fulfilled' && volunteerRes.value?.success) {
+          setVolunteerApps(volunteerRes.value.data || []);
+        }
+        if (recRes.status === 'fulfilled' && recRes.value?.success) {
+          setRecommendations(recRes.value.data || []);
         }
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
         setLoading(false);
+        setRecLoading(false);
       }
     };
     fetchDashboardData();
@@ -61,7 +74,6 @@ export const StudentDashboard = () => {
   const pendingVolunteers = (volunteerApps || []).filter(
     (r) => r.registration_status?.toLowerCase() === 'pending'
   ).length;
-
 
   return (
     <div className="space-y-8">
@@ -119,6 +131,143 @@ export const StudentDashboard = () => {
           icon={Clock}
           color="amber"
         />
+      </div>
+
+      {/* AI RECOMMENDATIONS SECTION: "Recommended Events For You" */}
+      <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg space-y-6 border border-indigo-800/40 relative overflow-hidden">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/60 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-indigo-400 text-slate-950 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                <Zap className="w-3 h-3 fill-slate-950" />
+                <span>AI-Powered Match</span>
+              </span>
+              <span className="text-xs text-indigo-300 font-medium">Personalized for your activity</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white mt-1 flex items-center gap-2">
+              <span>Recommended Events For You</span>
+              <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
+            </h2>
+            <p className="text-xs sm:text-sm text-indigo-200/80 mt-0.5">
+              Intelligent suggestions based on your department, previous interests, event popularity, and open seat availability.
+            </p>
+          </div>
+
+          <Link
+            to="/events"
+            className="text-xs font-bold text-indigo-300 hover:text-white flex items-center gap-1 transition-colors self-start sm:self-auto"
+          >
+            <span>All Events Directory</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {/* Recommendations Content */}
+        {recLoading ? (
+          <div className="py-12 flex justify-center">
+            <LoadingSpinner text="Analyzing campus events and calculating personalized matches..." />
+          </div>
+        ) : recommendations.length === 0 ? (
+          <div className="py-10 px-6 text-center bg-white/5 rounded-2xl border border-white/10 space-y-2">
+            <Compass className="w-8 h-8 text-indigo-300 mx-auto" />
+            <p className="text-sm font-bold text-white">No recommendations available yet</p>
+            <p className="text-xs text-indigo-200/70 max-w-md mx-auto">
+              You may have already registered for all upcoming open events, or new events will be published soon.
+            </p>
+            <Link
+              to="/events"
+              className="inline-block mt-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow transition-all"
+            >
+              Browse Campus Events →
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 relative z-10">
+            {recommendations.map((evt) => {
+              const formattedDate = new Date(evt.event_date).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              });
+              const matchScore = evt.match_score || 80;
+
+              return (
+                <div
+                  key={evt.id}
+                  className="group bg-white/10 hover:bg-white/15 backdrop-blur-md rounded-2xl border border-white/15 hover:border-indigo-400/50 p-5 transition-all duration-300 flex flex-col justify-between space-y-4 hover:shadow-xl"
+                >
+                  {/* Top Row: Category Badge + Match Score Badge */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white/10 text-indigo-200 border border-white/10 truncate max-w-[150px]">
+                        {evt.category_name || 'General'}
+                      </span>
+                      <span className={`px-2.5 py-1 text-[11px] font-extrabold rounded-full flex items-center gap-1 shadow-sm ${
+                        matchScore >= 85
+                          ? 'bg-emerald-500/90 text-white border border-emerald-400/60'
+                          : matchScore >= 70
+                          ? 'bg-indigo-500/90 text-white border border-indigo-400/60'
+                          : 'bg-sky-500/90 text-white border border-sky-400/60'
+                      }`}>
+                        <Star className="w-3 h-3 fill-current" />
+                        <span>{matchScore}% Match</span>
+                      </span>
+                    </div>
+
+                    {/* Event Title */}
+                    <div>
+                      <Link
+                        to={`/events/${evt.id}`}
+                        className="text-base font-extrabold text-white group-hover:text-indigo-300 transition-colors line-clamp-1"
+                      >
+                        {evt.title}
+                      </Link>
+                      {evt.primary_reason && (
+                        <p className="text-[11px] text-amber-300/90 font-semibold mt-1 flex items-center gap-1">
+                          <span>💡</span>
+                          <span className="truncate">{evt.primary_reason}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Details */}
+                    <div className="space-y-1.5 text-xs text-indigo-200/90 pt-1">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                        <span>{formattedDate}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                        <span className="truncate">{evt.venue}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom: Seats & Action */}
+                  <div className="pt-3 border-t border-white/10 space-y-3">
+                    <div className="flex items-center justify-between text-[11px] text-indigo-200">
+                      <span className="flex items-center gap-1 font-medium">
+                        <Ticket className="w-3 h-3 text-sky-400" />
+                        Seats Available:
+                      </span>
+                      <span className="font-bold text-white">
+                        {evt.seats_remaining} / {evt.max_attendees}
+                      </span>
+                    </div>
+
+                    <Link
+                      to={`/events/${evt.id}`}
+                      className="w-full py-2.5 px-4 bg-white text-indigo-950 hover:bg-indigo-50 font-extrabold text-xs rounded-xl shadow transition-all duration-200 flex items-center justify-center gap-1.5 group-hover:shadow-md"
+                    >
+                      <span>View Event & Register</span>
+                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform text-indigo-600" />
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Two Column Layout: Attending Events vs Volunteer Assignments */}

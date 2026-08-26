@@ -17,6 +17,7 @@ const attendeeRoutes = require('./routes/attendeeRoutes');
 const registrationRoutes = require('./routes/registrationRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const recommendationRoutes = require('./routes/recommendationRoutes');
 
 // Middleware imports
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
@@ -53,6 +54,7 @@ app.use('/api/attendees', attendeeRoutes);
 app.use('/api/registrations', registrationRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/recommendations', recommendationRoutes);
 
 // Error Handling Middleware
 app.use(notFound);
