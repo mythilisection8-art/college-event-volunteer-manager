@@ -6,7 +6,8 @@ const {
   createEvent,
   updateEvent,
   deleteEvent,
-  getOrganizerEvents
+  getOrganizerEvents,
+  assignOrganizer
 } = require('../controllers/eventController');
 const { getPersonalizedRecommendations } = require('../controllers/recommendationController');
 const { authenticate, optionalAuthenticate } = require('../middleware/authMiddleware');
@@ -34,9 +35,11 @@ router.get('/recommendations', authenticate, getPersonalizedRecommendations);
 router.get('/organizer/my-events', authenticate, authorize('organizer', 'admin'), getOrganizerEvents);
 router.get('/:id', optionalAuthenticate, getEventById);
 
-// Admin-ONLY Protected Event CRUD Routes (Organizers receive 403 Forbidden)
+// Admin-ONLY Protected Event CRUD & Assignment Routes (Organizers/Students receive 403 Forbidden)
 router.post('/', authenticate, authorize('admin'), eventValidation, createEvent);
+router.patch('/:id/assign-organizer', authenticate, authorize('admin'), assignOrganizer);
 router.put('/:id', authenticate, authorize('admin'), updateEvent);
 router.delete('/:id', authenticate, authorize('admin'), deleteEvent);
 
 module.exports = router;
+

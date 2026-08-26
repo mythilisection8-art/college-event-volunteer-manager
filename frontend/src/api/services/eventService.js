@@ -28,4 +28,9 @@ export const eventService = {
   getRecommendations: async () => {
     return await axiosClient.get('/events/recommendations');
   },
+
+  assignOrganizer: async (id, organizer_id) => {
+    return await axiosClient.patch(`/events/${id}/assign-organizer`, { organizer_id });
+  },
 };
+

@@ -6,6 +6,7 @@ const path = require('path');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(process.cwd(), 'backend', '.env') });
 
 const { testConnection } = require('./config/db');
 

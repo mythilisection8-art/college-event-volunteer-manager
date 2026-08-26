@@ -3,8 +3,7 @@
 -- =======================================================
 
 -- Create Database if it does not exist (optional, can be overridden by .env)
-CREATE DATABASE IF NOT EXISTS college_volunteer_db;
-USE college_volunteer_db;
+USE railway;
 
 -- 1. USERS TABLE
 CREATE TABLE IF NOT EXISTS users (
@@ -39,7 +38,7 @@ CREATE TABLE IF NOT EXISTS events (
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     category_id INT NULL,
-    organizer_id INT NOT NULL,
+    organizer_id INT NULL,
     event_date DATE NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
@@ -53,7 +52,7 @@ CREATE TABLE IF NOT EXISTS events (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
-    FOREIGN KEY (organizer_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (organizer_id) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_event_date (event_date),
     INDEX idx_event_status (status),
     INDEX idx_event_organizer (organizer_id)

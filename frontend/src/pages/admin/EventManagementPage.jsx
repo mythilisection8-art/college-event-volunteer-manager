@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { eventService } from '../../api/services/eventService';
+import { adminService } from '../../api/services/adminService';
 import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
+import { Modal } from '../../components/common/Modal';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { Pagination } from '../../components/common/Pagination';
@@ -14,7 +16,8 @@ import {
   Trash2,
   Edit,
   ExternalLink,
-  PlusCircle
+  PlusCircle,
+  UserCheck
 } from 'lucide-react';
 
 export const EventManagementPage = () => {
@@ -31,6 +34,13 @@ export const EventManagementPage = () => {
   // Delete modal
   const [selectedEventToDelete, setSelectedEventToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Assign Organizer modal
+  const [selectedEventForAssign, setSelectedEventForAssign] = useState(null);
+  const [selectedOrganizerId, setSelectedOrganizerId] = useState('');
+  const [organizersList, setOrganizersList] = useState([]);
+  const [loadingOrganizers, setLoadingOrganizers] = useState(false);
+  const [savingAssignment, setSavingAssignment] = useState(false);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -56,6 +66,77 @@ export const EventManagementPage = () => {
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
+
+  // Fetch active organizers for assignment modal
+  const fetchActiveOrganizers = async () => {
+    setLoadingOrganizers(true);
+    try {
+      const res = await adminService.getUsers({
+        role: 'organizer',
+        status: 'active',
+        limit: 100
+      });
+      if (res?.success) {
+        setOrganizersList(res.data || []);
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to load active organizers', 'error');
+    } finally {
+      setLoadingOrganizers(false);
+    }
+  };
+
+  const handleOpenAssignModal = (event) => {
+    setSelectedEventForAssign(event);
+    setSelectedOrganizerId(event.organizer_id ? String(event.organizer_id) : '');
+    if (organizersList.length === 0) {
+      fetchActiveOrganizers();
+    }
+  };
+
+  const handleSaveOrganizerAssignment = async (e) => {
+    e.preventDefault();
+    if (!selectedEventForAssign) return;
+
+    setSavingAssignment(true);
+    const organizerIdToSend = selectedOrganizerId ? parseInt(selectedOrganizerId, 10) : null;
+
+    try {
+      const res = await eventService.assignOrganizer(selectedEventForAssign.id, organizerIdToSend);
+      if (res?.success) {
+        showToast(res.message || 'Organizer assignment updated successfully!', 'success');
+
+        // Immediately update event row in local state without full reload
+        const assignedOrg = organizerIdToSend
+          ? organizersList.find((org) => org.id === organizerIdToSend)
+          : null;
+
+        setEvents((prevEvents) =>
+          prevEvents.map((evt) => {
+            if (evt.id === selectedEventForAssign.id) {
+              return {
+                ...evt,
+                organizer_id: organizerIdToSend,
+                organizer_name: assignedOrg ? assignedOrg.name : null,
+                organizer_email: assignedOrg ? assignedOrg.email : null,
+                organizer_department: assignedOrg ? assignedOrg.department : null,
+                ...(res.data || {})
+              };
+            }
+            return evt;
+          })
+        );
+
+        setSelectedEventForAssign(null);
+      }
+    } catch (err) {
+      const errorMsg =
+        err.response?.data?.message || err.message || 'Failed to update organizer assignment';
+      showToast(errorMsg, 'error');
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -164,8 +245,16 @@ export const EventManagementPage = () => {
 
                     {/* Organizer */}
                     <td className="py-4 px-6">
-                      <p className="font-bold text-slate-800">{evt.organizer_name}</p>
-                      <p className="text-[11px] text-slate-400">{evt.organizer_department || evt.organizer_email}</p>
+                      {evt.organizer_id && evt.organizer_name ? (
+                        <div>
+                          <p className="font-bold text-slate-800">{evt.organizer_name}</p>
+                          <p className="text-[11px] text-slate-400">{evt.organizer_department || evt.organizer_email}</p>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200/70">
+                          Unassigned
+                        </span>
+                      )}
                     </td>
 
                     {/* Date & Venue */}
@@ -193,6 +282,15 @@ export const EventManagementPage = () => {
 
                     {/* Actions */}
                     <td className="py-4 px-6 text-right space-x-1.5 whitespace-nowrap">
+                      <button
+                        onClick={() => handleOpenAssignModal(evt)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl transition-colors"
+                        title="Assign or Change Organizer"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>Organizer</span>
+                      </button>
+
                       <Link
                         to={`/organizer/events/${evt.id}/attendees`}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-xl transition-colors"
@@ -243,6 +341,89 @@ export const EventManagementPage = () => {
         </div>
       )}
 
+      {/* Assign Organizer Modal */}
+      <Modal
+        isOpen={Boolean(selectedEventForAssign)}
+        onClose={() => setSelectedEventForAssign(null)}
+        title="Manage Event Organizer Assignment"
+        maxWidth="max-w-md"
+      >
+        {selectedEventForAssign && (
+          <form onSubmit={handleSaveOrganizerAssignment} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                Target Event
+              </label>
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+                <p className="font-bold text-sm text-slate-900 line-clamp-1">{selectedEventForAssign.title}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Currently:{' '}
+                  <span className="font-semibold text-slate-700">
+                    {selectedEventForAssign.organizer_name
+                      ? `${selectedEventForAssign.organizer_name} (${selectedEventForAssign.organizer_department || selectedEventForAssign.organizer_email})`
+                      : 'Unassigned'}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Assign To Organizer
+              </label>
+              {loadingOrganizers ? (
+                <div className="py-4 text-center">
+                  <LoadingSpinner text="Loading active organizers..." />
+                </div>
+              ) : (
+                <select
+                  value={selectedOrganizerId}
+                  onChange={(e) => setSelectedOrganizerId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-800"
+                >
+                  <option value="">-- Unassigned (No Organizer) --</option>
+                  <optgroup label="Active Organizers">
+                    {organizersList.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name} {org.department ? `(${org.department})` : `(${org.email})`}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              )}
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Assigning an organizer grants them management rights over volunteers and attendees for this event.
+              </p>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSelectedEventForAssign(null)}
+                disabled={savingAssignment}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingAssignment || loadingOrganizers}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {savingAssignment ? (
+                  <span>Saving...</span>
+                ) : (
+                  <>
+                    <UserCheck className="w-4 h-4" />
+                    <span>Save Assignment</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       {/* Delete Confirmation */}
       <ConfirmModal
         isOpen={Boolean(selectedEventToDelete)}
@@ -257,3 +438,4 @@ export const EventManagementPage = () => {
     </div>
   );
 };
+

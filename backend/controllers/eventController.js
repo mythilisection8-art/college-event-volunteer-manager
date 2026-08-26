@@ -473,11 +473,113 @@ const getOrganizerEvents = async (req, res, next) => {
   }
 };
 
+// @desc    Assign or unassign an organizer to/from an event (ADMIN ONLY)
+// @route   PATCH /api/events/:id/assign-organizer
+// @access  Private (Admin)
+const assignOrganizer = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    let { organizer_id } = req.body;
+
+    // Normalize empty strings or 'null' or undefined to null
+    if (organizer_id === '' || organizer_id === 'null' || organizer_id === undefined) {
+      organizer_id = null;
+    }
+
+    // 1. Verify target event exists
+    const [events] = await pool.query('SELECT * FROM events WHERE id = ?', [id]);
+    if (events.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found.'
+      });
+    }
+
+    let organizerUser = null;
+
+    // 2. If organizer_id is provided, validate user existence, role, and active status
+    if (organizer_id !== null) {
+      const parsedOrganizerId = parseInt(organizer_id, 10);
+      if (isNaN(parsedOrganizerId) || parsedOrganizerId <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid organizer ID format.'
+        });
+      }
+
+      const [users] = await pool.query(
+        'SELECT id, name, email, role, department, phone, status FROM users WHERE id = ?',
+        [parsedOrganizerId]
+      );
+
+      if (users.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected organizer user does not exist.'
+        });
+      }
+
+      const user = users[0];
+
+      if (user.role !== 'organizer') {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot assign user with role "${user.role}" as event organizer. User must have the "organizer" role.`
+        });
+      }
+
+      if (user.status !== 'active') {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot assign inactive or blocked organizer.'
+        });
+      }
+
+      organizerUser = user;
+      organizer_id = parsedOrganizerId;
+    }
+
+    // 3. Update events.organizer_id
+    await pool.query('UPDATE events SET organizer_id = ? WHERE id = ?', [organizer_id, id]);
+
+    // 4. Fetch updated event with organizer info
+    const [updatedEvents] = await pool.query(
+      `SELECT 
+        e.*,
+        c.name AS category_name,
+        c.icon AS category_icon,
+        u.name AS organizer_name,
+        u.email AS organizer_email,
+        u.department AS organizer_department,
+        u.phone AS organizer_phone
+      FROM events e
+      LEFT JOIN categories c ON e.category_id = c.id
+      LEFT JOIN users u ON e.organizer_id = u.id
+      WHERE e.id = ?`,
+      [id]
+    );
+
+    const updatedEvent = updatedEvents[0];
+
+    res.json({
+      success: true,
+      message: organizer_id
+        ? `Event successfully assigned to organizer "${organizerUser.name}".`
+        : 'Organizer successfully unassigned from event.',
+      data: updatedEvent
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getEvents,
   getEventById,
   createEvent,
   updateEvent,
   deleteEvent,
-  getOrganizerEvents
+  getOrganizerEvents,
+  assignOrganizer
 };
+

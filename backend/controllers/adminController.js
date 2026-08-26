@@ -637,7 +637,7 @@ const getAllRegistrationsAdmin = async (req, res, next) => {
         FROM attendee_registrations ar
         JOIN users u ON ar.user_id = u.id
         JOIN events e ON ar.event_id = e.id
-        JOIN users org ON e.organizer_id = org.id
+        LEFT JOIN users org ON e.organizer_id = org.id
         ${whereSql}
         ORDER BY ar.registered_at DESC
         LIMIT ? OFFSET ?
@@ -711,7 +711,7 @@ const getAllRegistrationsAdmin = async (req, res, next) => {
       FROM registrations r
       JOIN users u ON r.user_id = u.id
       JOIN events e ON r.event_id = e.id
-      JOIN users org ON e.organizer_id = org.id
+      LEFT JOIN users org ON e.organizer_id = org.id
       ${whereSql}
       ORDER BY r.registered_at DESC
       LIMIT ? OFFSET ?
