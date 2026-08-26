@@ -38,12 +38,6 @@ async function seedDatabase() {
     await connection.query(seedSql);
     console.log('✅ Seed data inserted successfully!');
     console.log('');
-    console.log('📋 Default Demo Accounts (Password for all: password123):');
-    console.log('   - 🛡️  Admin:     admin@college.edu');
-    console.log('   - 📅 Organizer: organizer@college.edu');
-    console.log('   - 🎓 Student:   student@college.edu');
-    console.log('   - 🎓 Student:   ananya@college.edu');
-    console.log('');
   } catch (error) {
     console.error('❌ Database Seeding Failed:', error.message);
     process.exit(1);

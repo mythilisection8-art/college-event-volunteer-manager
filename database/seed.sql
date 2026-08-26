@@ -4,19 +4,7 @@
 
 USE college_volunteer_db;
 
--- 1. SEED USERS (Password for all seed users is 'password123')
--- Hash: $2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.
-INSERT INTO users (id, name, email, password, role, department, roll_number, phone, status) VALUES
-(1, 'System Administrator', 'admin@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'admin', 'Administration', 'ADM-001', '9876543210', 'active'),
-(2, 'Prof. Sharma (Tech Club)', 'organizer@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'organizer', 'Computer Science', 'FAC-CSE-01', '9876543211', 'active'),
-(3, 'Dr. Emily Watson (Cultural Sec)', 'cultural@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'organizer', 'Humanities & Arts', 'FAC-ART-02', '9876543212', 'active'),
-(4, 'Coach Rajesh Kumar (Sports)', 'sports@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'organizer', 'Physical Education', 'FAC-PE-03', '9876543213', 'active'),
-(5, 'Rahul Verma', 'student@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'student', 'Computer Science & Engineering', '22CS045', '9876543220', 'active'),
-(6, 'Ananya Sen', 'ananya@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'student', 'Electronics & Comm Engineering', '22EC018', '9876543221', 'active'),
-(7, 'Vikram Malhotra', 'vikram@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'student', 'Mechanical Engineering', '22ME092', '9876543222', 'active'),
-(8, 'Sneha Patel', 'sneha@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'student', 'Information Technology', '23IT012', '9876543223', 'active'),
-(9, 'Karan Mehta', 'karan@college.edu', '$2a$10$cqIgXtYTsZQIsT93a/9mNOa/bEOOdfOXVx8LQw4EkBFm65fHXhpk.', 'student', 'Civil Engineering', '23CE033', '9876543224', 'blocked')
-ON DUPLICATE KEY UPDATE name=VALUES(name);
+-- 1. SEED CATEGORIES (Default event categories)
 
 -- 2. SEED CATEGORIES
 INSERT INTO categories (id, name, description, icon) VALUES
@@ -133,23 +121,3 @@ INSERT INTO events (id, title, description, category_id, organizer_id, event_dat
 )
 ON DUPLICATE KEY UPDATE title=VALUES(title);
 
--- 4. SEED ATTENDEE REGISTRATIONS (Separate Attendee Reservations)
-INSERT INTO attendee_registrations (id, event_id, user_id, status) VALUES
-(1, 1, 5, 'registered'), -- Rahul attending HackNova
-(2, 1, 7, 'registered'), -- Vikram attending HackNova
-(3, 2, 6, 'registered'), -- Ananya attending Tarang
-(4, 3, 5, 'registered'), -- Rahul attending Sports Olympiad
-(5, 4, 6, 'registered'), -- Ananya attending GenAI Bootcamp
-(6, 4, 7, 'registered')  -- Vikram attending GenAI Bootcamp
-ON DUPLICATE KEY UPDATE status=VALUES(status);
-
--- 5. SEED VOLUNTEER REGISTRATIONS (Separate Volunteer Applications)
-INSERT INTO registrations (id, event_id, user_id, status, attendance_status, skills_notes, remarks) VALUES
-(1, 1, 5, 'approved', 'not_marked', 'Experience with networking, Git, and past hackathon participant.', 'Selected for Technical & Lab Coordination team.'),
-(2, 1, 6, 'pending', 'not_marked', 'Great communication skills, willing to assist with registrations and kits.', NULL),
-(3, 2, 5, 'pending', 'not_marked', 'Experience in audio setups and crowd management.', NULL),
-(4, 2, 7, 'approved', 'not_marked', 'Stage setup, lighting control and artist escorting experience.', 'Assigned to Main Stage Backstage.'),
-(5, 3, 6, 'approved', 'present', 'Inter-school athletics runner, knowledge of track & field rules.', 'Assigned to Finish Line & Timekeeping.'),
-(6, 4, 8, 'pending', 'not_marked', 'Learning Python and AI agents. Excited to help with participant setups.', NULL),
-(7, 5, 5, 'approved', 'completed', 'Volunteer with Red Cross Youth Club. First aid certified.', 'Outstanding support during donor registration.')
-ON DUPLICATE KEY UPDATE status=VALUES(status);

@@ -119,20 +119,13 @@ erDiagram
 
 ---
 
-## 🔑 Demo Test Login Credentials
+## 🔑 Authentication & Account Access
 
-All seed accounts use the default password: **`password123`**
+VoluntSync supports role-based authentication with encrypted password hashing:
 
-| Role | Email | Password | Description |
-| :--- | :--- | :--- | :--- |
-| 🛡️ **Admin** | `admin@college.edu` | `password123` | Full administrative control & statistics |
-| 📅 **Organizer** | `organizer@college.edu` | `password123` | Prof. Sharma (Tech Club Coordinator) |
-| 📅 **Organizer** | `cultural@college.edu` | `password123` | Dr. Emily Watson (Cultural Secretary) |
-| 📅 **Organizer** | `sports@college.edu` | `password123` | Coach Rajesh Kumar (Sports Coordinator) |
-| 🎓 **Student** | `student@college.edu` | `password123` | Rahul Verma (CSE - 22CS045) |
-| 🎓 **Student** | `ananya@college.edu` | `password123` | Ananya Sen (ECE - 22EC018) |
-
-> 💡 *Tip: On the Login page, you can use the **1-Click Quick Demo Login** buttons to immediately test any role!*
+- **🛡️ Admin**: Manage users, oversee campus events, review analytics, and create organizer accounts from the Admin Dashboard.
+- **📅 Organizer**: Hosted event management, volunteer recruitment, and attendance verification.
+- **🎓 Student / Volunteer**: Public registration available on the Register page (`/register`), followed by sign-in via standard email/password on `/login`.
 
 ---
 
