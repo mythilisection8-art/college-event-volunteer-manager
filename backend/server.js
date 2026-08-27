@@ -38,7 +38,21 @@ app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
+// Root / Health check routes
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'College Event Volunteer Management API is running',
+    health: '/api/health'
+  });
+});
 
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date(),
+    service: 'College Event Volunteer Management API'
+  });
+});
 // Health check route
 app.get('/api/health', (req, res) => {
   res.json({
