@@ -419,6 +419,7 @@ const getVolunteerPass = async (req, res, next) => {
         r.user_id,
         r.status AS registration_status,
         r.attendance_status,
+        r.checked_in_at,
         r.skills_notes,
         r.remarks AS organizer_remarks,
         r.registered_at,
@@ -495,6 +496,8 @@ const getVolunteerPass = async (req, res, next) => {
 
     const isApproved = pass.registration_status === 'approved';
     const passCode = `REG-VOL-${new Date(pass.event_date).getFullYear()}-${String(pass.registration_id).padStart(5, '0')}`;
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const verifyUrl = `${clientUrl}/verify-pass?type=volunteer&id=${pass.registration_id}&code=${passCode}`;
 
     // Payload for dynamic QR code encoding (only active when approved)
     const qrPayload = JSON.stringify({
@@ -513,6 +516,7 @@ const getVolunteerPass = async (req, res, next) => {
       status: pass.registration_status,
       attendance_status: pass.attendance_status,
       assigned_role_remarks: pass.organizer_remarks || 'Volunteer Duty Team',
+      verify_url: verifyUrl,
       issued_at: pass.registered_at
     });
 
@@ -523,8 +527,10 @@ const getVolunteerPass = async (req, res, next) => {
         pass_code: passCode,
         pass_type: 'volunteer',
         qr_payload: isApproved ? qrPayload : null,
+        verify_url: verifyUrl,
         registration_status: pass.registration_status,
         attendance_status: pass.attendance_status,
+        checked_in_at: pass.checked_in_at,
         organizer_remarks: pass.organizer_remarks,
         skills_notes: pass.skills_notes,
         is_active: isApproved,
@@ -558,6 +564,358 @@ const getVolunteerPass = async (req, res, next) => {
   }
 };
 
+// @desc    Verify Volunteer QR Pass (Organizer of that event or Admin only)
+// @route   POST /api/registrations/verify-pass
+// @access  Private (Organizer of assigned event, Admin)
+const verifyVolunteerPass = async (req, res, next) => {
+  try {
+    const { code, registration_id, qr_data } = req.body;
+    let targetRegistrationId = registration_id ? parseInt(registration_id, 10) : null;
+    let targetPassCode = code;
+
+    // If raw scanned qr_data provided, parse it
+    if (qr_data) {
+      if (typeof qr_data === 'string') {
+        try {
+          const parsed = JSON.parse(qr_data);
+          if (parsed.registration_id) targetRegistrationId = parseInt(parsed.registration_id, 10);
+          if (parsed.pass_code) targetPassCode = parsed.pass_code;
+        } catch (e) {
+          const match = qr_data.match(/REG-VOL-\d{4}-(\d+)/i);
+          if (match) {
+            targetRegistrationId = parseInt(match[1], 10);
+            targetPassCode = match[0];
+          } else {
+            try {
+              const url = new URL(qr_data);
+              const idParam = url.searchParams.get('id');
+              const codeParam = url.searchParams.get('code');
+              if (idParam) targetRegistrationId = parseInt(idParam, 10);
+              if (codeParam) targetPassCode = codeParam;
+            } catch (_) {}
+          }
+        }
+      }
+    } else if (code && !targetRegistrationId) {
+      const match = String(code).match(/REG-VOL-\d{4}-(\d+)/i);
+      if (match) {
+        targetRegistrationId = parseInt(match[1], 10);
+      } else if (!isNaN(Number(code))) {
+        targetRegistrationId = parseInt(code, 10);
+      }
+    }
+
+    if (!targetRegistrationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid pass code or volunteer registration identifier.'
+      });
+    }
+
+    const query = `
+      SELECT 
+        r.id AS registration_id,
+        r.event_id,
+        r.user_id,
+        r.status AS registration_status,
+        r.attendance_status,
+        r.checked_in_at,
+        r.skills_notes,
+        r.remarks AS organizer_remarks,
+        r.registered_at,
+        r.updated_at,
+        u.id AS student_id,
+        u.name AS student_name,
+        u.email AS student_email,
+        u.roll_number AS student_roll_number,
+        u.department AS student_department,
+        u.phone AS student_phone,
+        e.id AS event_id,
+        e.title AS event_title,
+        e.description AS event_description,
+        e.event_date,
+        e.start_time,
+        e.end_time,
+        e.venue,
+        e.status AS event_status,
+        e.banner_image,
+        e.organizer_id,
+        c.name AS category_name,
+        org.name AS organizer_name,
+        org.email AS organizer_email
+      FROM registrations r
+      JOIN events e ON r.event_id = e.id
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN categories c ON e.category_id = c.id
+      LEFT JOIN users org ON e.organizer_id = org.id
+      WHERE r.id = ?
+    `;
+
+    const [rows] = await pool.query(query, [targetRegistrationId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Volunteer application record not found in system.'
+      });
+    }
+
+    const reg = rows[0];
+
+    // Authorization: Admin or Assigned Organizer
+    if (req.user.role !== 'admin' && reg.organizer_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You are not authorized to verify volunteer passes for this event.'
+      });
+    }
+
+    const passCode = `REG-VOL-${new Date(reg.event_date).getFullYear()}-${String(reg.registration_id).padStart(5, '0')}`;
+
+    // Status check: only approved applications can be verified for duty check-in
+    if (reg.registration_status !== 'approved') {
+      const statusMessage =
+        reg.registration_status === 'pending'
+          ? 'Volunteer application is PENDING review and has not been approved.'
+          : reg.registration_status === 'rejected'
+          ? 'Volunteer application was REJECTED.'
+          : 'Volunteer application was CANCELLED.';
+
+      return res.status(400).json({
+        success: false,
+        is_valid: false,
+        message: statusMessage,
+        data: {
+          registration_id: reg.registration_id,
+          pass_code: passCode,
+          pass_type: 'volunteer',
+          registration_status: reg.registration_status,
+          attendance_status: reg.attendance_status,
+          organizer_remarks: reg.organizer_remarks,
+          student: {
+            id: reg.student_id,
+            name: reg.student_name,
+            department: reg.student_department,
+            roll_number: reg.student_roll_number
+          },
+          event: {
+            id: reg.event_id,
+            title: reg.event_title,
+            event_date: reg.event_date,
+            venue: reg.venue
+          }
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      is_valid: true,
+      pass_type: 'volunteer',
+      data: {
+        registration_id: reg.registration_id,
+        pass_code: passCode,
+        pass_type: 'volunteer',
+        registration_status: reg.registration_status,
+        attendance_status: reg.attendance_status || 'not_marked',
+        checked_in_at: reg.checked_in_at,
+        is_already_checked_in: reg.attendance_status === 'present' || reg.attendance_status === 'completed',
+        organizer_remarks: reg.organizer_remarks,
+        skills_notes: reg.skills_notes,
+        registered_at: reg.registered_at,
+        student: {
+          id: reg.student_id,
+          name: reg.student_name,
+          email: reg.student_email,
+          roll_number: reg.student_roll_number,
+          department: reg.student_department,
+          phone: reg.student_phone
+        },
+        event: {
+          id: reg.event_id,
+          title: reg.event_title,
+          description: reg.event_description,
+          event_date: reg.event_date,
+          start_time: reg.start_time,
+          end_time: reg.end_time,
+          venue: reg.venue,
+          status: reg.event_status,
+          category_name: reg.category_name,
+          banner_image: reg.banner_image,
+          organizer_name: reg.organizer_name,
+          organizer_email: reg.organizer_email
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Check-In Volunteer & Mark Present (Organizer of that event or Admin only)
+// @route   POST /api/registrations/check-in
+// @access  Private (Organizer of assigned event, Admin)
+const checkInVolunteer = async (req, res, next) => {
+  try {
+    const registrationId = req.params.id || req.body.registration_id;
+    const attendanceStatus = req.body.attendance_status || 'present';
+    const remarks = req.body.remarks;
+
+    if (!registrationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Registration ID is required for check-in.'
+      });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT r.id, r.status, r.attendance_status, r.checked_in_at, r.remarks, e.organizer_id, e.title AS event_title, u.name AS student_name
+       FROM registrations r
+       JOIN events e ON r.event_id = e.id
+       JOIN users u ON r.user_id = u.id
+       WHERE r.id = ?`,
+      [registrationId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Volunteer registration record not found.'
+      });
+    }
+
+    const reg = rows[0];
+
+    // Authorization: Admin or Assigned Organizer
+    if (req.user.role !== 'admin' && reg.organizer_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You are not assigned to organize this event.'
+      });
+    }
+
+    // Status check: only approved applications can be checked in
+    if (reg.status !== 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot check in volunteer with application status "${reg.status}". Only APPROVED volunteers can check in.`
+      });
+    }
+
+    const isAlreadyPresent = reg.attendance_status === 'present' || reg.attendance_status === 'completed';
+
+    await pool.query(
+      `UPDATE registrations 
+       SET attendance_status = ?, checked_in_at = COALESCE(checked_in_at, CURRENT_TIMESTAMP), remarks = COALESCE(?, remarks) 
+       WHERE id = ?`,
+      [attendanceStatus, remarks || null, registrationId]
+    );
+
+    res.json({
+      success: true,
+      message: isAlreadyPresent && attendanceStatus === 'present'
+        ? `Volunteer ${reg.student_name} is already checked in.`
+        : `Volunteer ${reg.student_name} successfully checked in for "${reg.event_title}"!`,
+      data: {
+        registration_id: reg.id,
+        attendance_status: attendanceStatus,
+        checked_in_at: reg.checked_in_at || new Date(),
+        student_name: reg.student_name,
+        was_already_checked_in: isAlreadyPresent
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Public Read-Only Verification for Volunteer Pass (No sensitive student data exposed)
+// @route   GET /api/registrations/public-verify
+// @access  Public (No Auth required)
+const publicVerifyVolunteerPass = async (req, res, next) => {
+  try {
+    const { code, id } = req.query;
+    let targetRegistrationId = id ? parseInt(id, 10) : null;
+
+    if (!targetRegistrationId && code) {
+      const match = String(code).match(/REG-VOL-\d{4}-(\d+)/i);
+      if (match) {
+        targetRegistrationId = parseInt(match[1], 10);
+      } else if (!isNaN(Number(code))) {
+        targetRegistrationId = parseInt(code, 10);
+      }
+    }
+
+    if (!targetRegistrationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pass code or registration identifier is required.'
+      });
+    }
+
+    const query = `
+      SELECT 
+        r.id AS registration_id,
+        r.status AS registration_status,
+        r.attendance_status,
+        r.checked_in_at,
+        r.remarks AS organizer_remarks,
+        r.registered_at,
+        u.name AS student_name,
+        e.title AS event_title,
+        e.event_date,
+        e.start_time,
+        e.end_time,
+        e.venue,
+        c.name AS category_name
+      FROM registrations r
+      JOIN events e ON r.event_id = e.id
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN categories c ON e.category_id = c.id
+      WHERE r.id = ?
+    `;
+
+    const [rows] = await pool.query(query, [targetRegistrationId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        is_valid: false,
+        message: 'Pass not found or invalid.'
+      });
+    }
+
+    const reg = rows[0];
+    const passCode = `REG-VOL-${new Date(reg.event_date).getFullYear()}-${String(reg.registration_id).padStart(5, '0')}`;
+    const isValid = reg.registration_status === 'approved';
+
+    res.json({
+      success: true,
+      is_valid: isValid,
+      data: {
+        pass_type: 'Volunteer Duty Pass',
+        pass_code: passCode,
+        is_valid: isValid,
+        registration_status: reg.registration_status,
+        attendance_status: reg.attendance_status || 'not_marked',
+        checked_in_at: reg.checked_in_at,
+        event_title: reg.event_title,
+        event_date: reg.event_date,
+        start_time: reg.start_time,
+        end_time: reg.end_time,
+        venue: reg.venue,
+        category_name: reg.category_name,
+        student_name: reg.student_name,
+        organizer_remarks: isValid ? reg.organizer_remarks : null,
+        registered_at: reg.registered_at,
+        verified_at: new Date()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerForEvent,
   getMyRegistrations,
@@ -565,6 +923,9 @@ module.exports = {
   getEventRegistrations,
   updateRegistrationStatus,
   updateAttendance,
-  getVolunteerPass
+  getVolunteerPass,
+  verifyVolunteerPass,
+  checkInVolunteer,
+  publicVerifyVolunteerPass
 };
 

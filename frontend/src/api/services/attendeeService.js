@@ -24,5 +24,20 @@ export const attendeeService = {
   getAttendeePassById: async (registrationId) => {
     return await axiosClient.get(`/attendees/pass/${registrationId}`);
   },
+
+  verifyPass: async (data) => {
+    return await axiosClient.post('/attendees/verify-pass', data);
+  },
+
+  checkInAttendee: async (registrationId, data = {}) => {
+    return await axiosClient.post('/attendees/check-in', {
+      registration_id: registrationId,
+      ...data
+    });
+  },
+
+  publicVerifyPass: async (params = {}) => {
+    return await axiosClient.get('/attendees/public-verify', { params });
+  },
 };
 

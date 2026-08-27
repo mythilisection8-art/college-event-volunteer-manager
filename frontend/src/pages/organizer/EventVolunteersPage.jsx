@@ -19,7 +19,8 @@ import {
   Building,
   Hash,
   MessageSquare,
-  Award
+  Award,
+  QrCode
 } from 'lucide-react';
 
 export const EventVolunteersPage = () => {
@@ -160,6 +161,23 @@ export const EventVolunteersPage = () => {
               Event: <strong className="text-slate-800">{eventData?.title || 'Loading...'}</strong>
             </p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Link
+            to={`/organizer/scan?eventId=${id}`}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+          >
+            <QrCode className="w-4 h-4" />
+            <span>Scan Volunteer Pass</span>
+          </Link>
+          <Link
+            to={`/organizer/events/${id}/attendees`}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+          >
+            <Users className="w-4 h-4" />
+            <span>Switch to Attendee Roster</span>
+          </Link>
         </div>
       </div>
 

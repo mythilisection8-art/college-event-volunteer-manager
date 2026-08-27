@@ -32,5 +32,20 @@ export const registrationService = {
   getVolunteerPassById: async (registrationId) => {
     return await axiosClient.get(`/registrations/pass/${registrationId}`);
   },
+
+  verifyVolunteerPass: async (data) => {
+    return await axiosClient.post('/registrations/verify-pass', data);
+  },
+
+  checkInVolunteer: async (registrationId, data = {}) => {
+    return await axiosClient.post('/registrations/check-in', {
+      registration_id: registrationId,
+      ...data
+    });
+  },
+
+  publicVerifyVolunteerPass: async (params = {}) => {
+    return await axiosClient.get('/registrations/public-verify', { params });
+  },
 };
 

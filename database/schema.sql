@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS attendee_registrations (
     event_id INT NOT NULL,
     user_id INT NOT NULL,
     status ENUM('registered', 'cancelled') NOT NULL DEFAULT 'registered',
+    attendance_status ENUM('not_marked', 'present', 'absent') NOT NULL DEFAULT 'not_marked',
+    checked_in_at TIMESTAMP NULL DEFAULT NULL,
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
@@ -71,7 +73,8 @@ CREATE TABLE IF NOT EXISTS attendee_registrations (
     UNIQUE KEY unique_user_attendee (user_id, event_id),
     INDEX idx_att_event (event_id),
     INDEX idx_att_user (user_id),
-    INDEX idx_att_status (status)
+    INDEX idx_att_status (status),
+    INDEX idx_att_attendance (attendance_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 5. VOLUNTEER REGISTRATIONS TABLE (Separate Volunteer Applications & Approvals)
@@ -81,6 +84,7 @@ CREATE TABLE IF NOT EXISTS registrations (
     user_id INT NOT NULL,
     status ENUM('pending', 'approved', 'rejected', 'cancelled') NOT NULL DEFAULT 'pending',
     attendance_status ENUM('not_marked', 'present', 'absent', 'completed') NOT NULL DEFAULT 'not_marked',
+    checked_in_at TIMESTAMP NULL DEFAULT NULL,
     skills_notes TEXT NULL,
     remarks TEXT NULL,
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -90,5 +94,6 @@ CREATE TABLE IF NOT EXISTS registrations (
     UNIQUE KEY unique_user_event (user_id, event_id),
     INDEX idx_reg_event (event_id),
     INDEX idx_reg_user (user_id),
-    INDEX idx_reg_status (status)
+    INDEX idx_reg_status (status),
+    INDEX idx_reg_attendance (attendance_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

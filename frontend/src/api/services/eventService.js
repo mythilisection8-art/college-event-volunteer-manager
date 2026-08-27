@@ -32,5 +32,17 @@ export const eventService = {
   assignOrganizer: async (id, organizer_id) => {
     return await axiosClient.patch(`/events/${id}/assign-organizer`, { organizer_id });
   },
+
+  verifyAnyPass: async (data) => {
+    return await axiosClient.post('/events/verify-pass', data);
+  },
+
+  checkInAnyPass: async (data) => {
+    return await axiosClient.post('/events/check-in-pass', data);
+  },
+
+  publicVerifyAnyPass: async (params = {}) => {
+    return await axiosClient.get('/events/public-verify-pass', { params });
+  },
 };
 

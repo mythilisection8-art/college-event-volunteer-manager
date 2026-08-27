@@ -56,6 +56,27 @@ async function initDatabase() {
       console.log('✅ Added "max_attendees" column to existing events table.');
     }
 
+    // Safe alter for attendee_registrations attendance columns
+    const [attCols] = await connection.query('SHOW COLUMNS FROM attendee_registrations LIKE "attendance_status"');
+    if (attCols.length === 0) {
+      await connection.query(`
+        ALTER TABLE attendee_registrations 
+        ADD COLUMN attendance_status ENUM('not_marked', 'present', 'absent') NOT NULL DEFAULT 'not_marked' AFTER status,
+        ADD COLUMN checked_in_at TIMESTAMP NULL DEFAULT NULL AFTER attendance_status;
+      `);
+      console.log('✅ Added "attendance_status" and "checked_in_at" columns to attendee_registrations table.');
+    }
+
+    // Safe alter for registrations checked_in_at column
+    const [regCols] = await connection.query('SHOW COLUMNS FROM registrations LIKE "checked_in_at"');
+    if (regCols.length === 0) {
+      await connection.query(`
+        ALTER TABLE registrations 
+        ADD COLUMN checked_in_at TIMESTAMP NULL DEFAULT NULL AFTER attendance_status;
+      `);
+      console.log('✅ Added "checked_in_at" column to registrations table.');
+    }
+
     console.log('✅ Database schema tables (users, categories, events, attendee_registrations, registrations) created successfully!');
 
     console.log('🎉 Database initialization complete!');

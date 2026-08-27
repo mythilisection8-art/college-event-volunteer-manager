@@ -14,7 +14,8 @@ import {
   Sparkles,
   MapPin,
   CheckCircle2,
-  ChevronRight
+  ChevronRight,
+  QrCode
 } from 'lucide-react';
 
 export const OrganizerDashboard = () => {
@@ -59,6 +60,13 @@ export const OrganizerDashboard = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            to="/organizer/scan"
+            className="px-5 py-3 bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
+          >
+            <QrCode className="w-4 h-4 text-white" />
+            <span>Scan QR Gate Pass</span>
+          </Link>
           <Link
             to="/organizer/events"
             className="px-5 py-3 bg-white text-indigo-950 hover:bg-indigo-50 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"

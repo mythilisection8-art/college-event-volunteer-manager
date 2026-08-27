@@ -12,7 +12,8 @@ import {
   BarChart3,
   Sparkles,
   FileCheck,
-  Building2
+  Building2,
+  QrCode
 } from 'lucide-react';
 import { Badge } from './Badge';
 
@@ -28,6 +29,7 @@ export const Sidebar = () => {
 
   const organizerLinks = [
     { name: 'Overview', path: '/organizer/dashboard', icon: LayoutDashboard },
+    { name: 'Scan QR Passes', path: '/organizer/scan', icon: QrCode },
     { name: 'Assigned Events', path: '/organizer/events', icon: Calendar },
     { name: 'Explore All Events', path: '/events', icon: Sparkles },
     { name: 'Organizer Profile', path: '/student/profile', icon: User },
@@ -35,6 +37,7 @@ export const Sidebar = () => {
 
   const adminLinks = [
     { name: 'Admin Overview', path: '/admin/dashboard', icon: LayoutDashboard },
+    { name: 'Scan QR Passes', path: '/admin/scan', icon: QrCode },
     { name: 'User Management', path: '/admin/users', icon: Users },
     { name: 'Event Directory', path: '/admin/events', icon: Calendar },
     { name: 'Create Event', path: '/admin/events/create', icon: PlusCircle },

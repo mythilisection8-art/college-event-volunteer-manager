@@ -17,7 +17,9 @@ import {
   Calendar,
   Users,
   Clock,
-  Sparkles
+  Sparkles,
+  QrCode,
+  UserCheck
 } from 'lucide-react';
 
 export const EventAttendeesPage = () => {
@@ -61,6 +63,7 @@ export const EventAttendeesPage = () => {
 
   const maxCapacity = eventData?.max_attendees || 100;
   const registeredCount = attendees.length;
+  const checkedInCount = attendees.filter((a) => a.attendance_status === 'present').length;
   const seatsRemaining = Math.max(0, maxCapacity - registeredCount);
   const occupancyPercent = Math.min(100, Math.round((registeredCount / maxCapacity) * 100));
 
@@ -86,13 +89,22 @@ export const EventAttendeesPage = () => {
           </div>
         </div>
 
-        <Link
-          to={`/organizer/events/${id}/volunteers`}
-          className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 self-start sm:self-auto"
-        >
-          <Users className="w-4 h-4" />
-          <span>Switch to Volunteer Roster</span>
-        </Link>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Link
+            to={`/organizer/scan?eventId=${id}`}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+          >
+            <QrCode className="w-4 h-4" />
+            <span>Scan Attendee Pass</span>
+          </Link>
+          <Link
+            to={`/organizer/events/${id}/volunteers`}
+            className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+          >
+            <Users className="w-4 h-4" />
+            <span>Switch to Volunteer Roster</span>
+          </Link>
+        </div>
       </div>
 
       {/* Capacity & Attendance Summary Cards */}
@@ -217,12 +229,24 @@ export const EventAttendeesPage = () => {
                       <p className="text-[11px] text-slate-400">{new Date(att.registered_at).toLocaleTimeString()}</p>
                     </td>
 
-                    {/* Status */}
-                    <td className="py-4 px-6 text-right">
-                      <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-[11px]">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Seat Confirmed</span>
-                      </span>
+                    {/* Status & Attendance */}
+                    <td className="py-4 px-6 text-right space-y-1">
+                      {att.attendance_status === 'present' ? (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full font-extrabold text-[11px]">
+                          <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Present</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-full font-bold text-[11px]">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Seat Confirmed</span>
+                        </span>
+                      )}
+                      {att.checked_in_at && (
+                        <p className="text-[10px] text-slate-400">
+                          Checked in: {new Date(att.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
                     </td>
                   </tr>
                 ))}

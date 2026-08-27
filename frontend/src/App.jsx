@@ -19,6 +19,7 @@ import { LoginPage } from './pages/public/LoginPage';
 import { RegisterPage } from './pages/public/RegisterPage';
 import { UnauthorizedPage } from './pages/public/UnauthorizedPage';
 import { NotFoundPage } from './pages/public/NotFoundPage';
+import { PublicPassVerificationPage } from './pages/public/PublicPassVerificationPage';
 
 // Student Pages
 import { StudentDashboard } from './pages/student/StudentDashboard';
@@ -30,6 +31,7 @@ import { OrganizerDashboard } from './pages/organizer/OrganizerDashboard';
 import { ManageEventsPage } from './pages/organizer/ManageEventsPage';
 import { EventVolunteersPage } from './pages/organizer/EventVolunteersPage';
 import { EventAttendeesPage } from './pages/organizer/EventAttendeesPage';
+import { QRScannerPage } from './pages/organizer/QRScannerPage';
 
 // Admin Pages
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -50,6 +52,8 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/events" element={<EventsListPage />} />
               <Route path="/events/:id" element={<EventDetailsPage />} />
+              <Route path="/verify-pass" element={<PublicPassVerificationPage />} />
+              <Route path="/verify/:type/:id" element={<PublicPassVerificationPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/unauthorized" element={<UnauthorizedPage />} />
@@ -84,6 +88,7 @@ function App() {
               }
             >
               <Route path="dashboard" element={<OrganizerDashboard />} />
+              <Route path="scan" element={<QRScannerPage />} />
               <Route path="events" element={<ManageEventsPage />} />
               <Route path="events/:id/volunteers" element={<EventVolunteersPage />} />
               <Route path="events/:id/attendees" element={<EventAttendeesPage />} />
@@ -101,6 +106,7 @@ function App() {
               }
             >
               <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="scan" element={<QRScannerPage />} />
               <Route path="users" element={<UserManagementPage />} />
               <Route path="events" element={<EventManagementPage />} />
               <Route path="events/create" element={<CreateEditEventPage />} />

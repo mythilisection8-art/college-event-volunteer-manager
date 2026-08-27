@@ -21,7 +21,8 @@ import {
   TrendingUp,
   Award,
   Flame,
-  PlusCircle
+  PlusCircle,
+  QrCode
 } from 'lucide-react';
 
 export const AdminDashboard = () => {
@@ -79,8 +80,15 @@ export const AdminDashboard = () => {
 
         <div className="flex items-center gap-2">
           <Link
-            to="/admin/events/create"
+            to="/admin/scan"
             className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
+          >
+            <QrCode className="w-4 h-4" />
+            <span>Scan QR Passes</span>
+          </Link>
+          <Link
+            to="/admin/events/create"
+            className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5"
           >
             <PlusCircle className="w-4 h-4" />
             <span>Create Event</span>

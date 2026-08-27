@@ -573,6 +573,142 @@ const assignOrganizer = async (req, res, next) => {
   }
 };
 
+// @desc    Unified Pass Verification (Attendee or Volunteer)
+// @route   POST /api/events/verify-pass
+// @access  Private (Organizer of assigned event, Admin)
+const verifyAnyPass = async (req, res, next) => {
+  try {
+    const { qr_data, code, pass_type, registration_id } = req.body;
+    let raw = qr_data || code;
+    let type = pass_type; // 'attendee' | 'volunteer' | null
+    let targetId = registration_id ? parseInt(registration_id, 10) : null;
+    let targetCode = code;
+
+    // Check if raw is JSON string
+    if (raw && typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.type === 'CAMPUS_EVENT_ATTENDEE_PASS' || parsed.pass_type === 'attendee') {
+          type = 'attendee';
+        } else if (parsed.type === 'CAMPUS_EVENT_VOLUNTEER_PASS' || parsed.pass_type === 'volunteer') {
+          type = 'volunteer';
+        }
+        if (parsed.registration_id) targetId = parseInt(parsed.registration_id, 10);
+        if (parsed.pass_code) targetCode = parsed.pass_code;
+      } catch (_) {
+        if (/REG-ATT-/i.test(raw)) {
+          type = 'attendee';
+          const m = raw.match(/REG-ATT-\d{4}-(\d+)/i);
+          if (m) targetId = parseInt(m[1], 10);
+        } else if (/REG-VOL-/i.test(raw)) {
+          type = 'volunteer';
+          const m = raw.match(/REG-VOL-\d{4}-(\d+)/i);
+          if (m) targetId = parseInt(m[1], 10);
+        } else {
+          try {
+            const url = new URL(raw);
+            const t = url.searchParams.get('type');
+            const id = url.searchParams.get('id');
+            const c = url.searchParams.get('code');
+            if (t) type = t;
+            if (id) targetId = parseInt(id, 10);
+            if (c) targetCode = c;
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (!type && targetCode) {
+      if (/REG-ATT-/i.test(targetCode)) type = 'attendee';
+      if (/REG-VOL-/i.test(targetCode)) type = 'volunteer';
+    }
+
+    const { verifyAttendeePass } = require('./attendeeController');
+    const { verifyVolunteerPass } = require('./registrationController');
+
+    if (type === 'attendee') {
+      req.body.registration_id = targetId;
+      req.body.code = targetCode;
+      return verifyAttendeePass(req, res, next);
+    } else if (type === 'volunteer') {
+      req.body.registration_id = targetId;
+      req.body.code = targetCode;
+      return verifyVolunteerPass(req, res, next);
+    }
+
+    if (targetId) {
+      const [attRows] = await pool.query('SELECT id FROM attendee_registrations WHERE id = ?', [targetId]);
+      if (attRows.length > 0) {
+        req.body.registration_id = targetId;
+        return verifyAttendeePass(req, res, next);
+      }
+      const [volRows] = await pool.query('SELECT id FROM registrations WHERE id = ?', [targetId]);
+      if (volRows.length > 0) {
+        req.body.registration_id = targetId;
+        return verifyVolunteerPass(req, res, next);
+      }
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: 'Unrecognized pass format. Please scan a valid Attendee or Volunteer QR pass.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Unified Pass Check-In (Attendee or Volunteer)
+// @route   POST /api/events/check-in-pass
+// @access  Private (Organizer of assigned event, Admin)
+const checkInAnyPass = async (req, res, next) => {
+  try {
+    const { pass_type, registration_id, attendance_status, remarks } = req.body;
+
+    const { checkInAttendee } = require('./attendeeController');
+    const { checkInVolunteer } = require('./registrationController');
+
+    if (pass_type === 'volunteer') {
+      req.body.registration_id = registration_id;
+      req.body.attendance_status = attendance_status || 'present';
+      req.body.remarks = remarks;
+      return checkInVolunteer(req, res, next);
+    } else {
+      req.body.registration_id = registration_id;
+      req.body.attendance_status = attendance_status || 'present';
+      return checkInAttendee(req, res, next);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Public Unified Pass Verification (Read-Only)
+// @route   GET /api/events/public-verify-pass
+// @access  Public (No auth required)
+const publicVerifyAnyPass = async (req, res, next) => {
+  try {
+    const { code, type, id } = req.query;
+    let detectedType = type;
+
+    if (!detectedType && code) {
+      if (/REG-ATT-/i.test(code)) detectedType = 'attendee';
+      if (/REG-VOL-/i.test(code)) detectedType = 'volunteer';
+    }
+
+    const { publicVerifyAttendeePass } = require('./attendeeController');
+    const { publicVerifyVolunteerPass } = require('./registrationController');
+
+    if (detectedType === 'volunteer') {
+      return publicVerifyVolunteerPass(req, res, next);
+    } else {
+      return publicVerifyAttendeePass(req, res, next);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getEvents,
   getEventById,
@@ -580,6 +716,9 @@ module.exports = {
   updateEvent,
   deleteEvent,
   getOrganizerEvents,
-  assignOrganizer
+  assignOrganizer,
+  verifyAnyPass,
+  checkInAnyPass,
+  publicVerifyAnyPass
 };
 

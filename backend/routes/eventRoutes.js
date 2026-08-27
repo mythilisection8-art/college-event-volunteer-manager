@@ -7,7 +7,10 @@ const {
   updateEvent,
   deleteEvent,
   getOrganizerEvents,
-  assignOrganizer
+  assignOrganizer,
+  verifyAnyPass,
+  checkInAnyPass,
+  publicVerifyAnyPass
 } = require('../controllers/eventController');
 const { getPersonalizedRecommendations } = require('../controllers/recommendationController');
 const { authenticate, optionalAuthenticate } = require('../middleware/authMiddleware');
@@ -29,10 +32,16 @@ const eventValidation = [
   validate
 ];
 
-// Public / Authenticated Browsing Routes
+// Public / Authenticated Browsing & Pass Verification Routes
+router.get('/public-verify-pass', publicVerifyAnyPass);
 router.get('/', optionalAuthenticate, getEvents);
 router.get('/recommendations', authenticate, getPersonalizedRecommendations);
 router.get('/organizer/my-events', authenticate, authorize('organizer', 'admin'), getOrganizerEvents);
+
+// Organizer & Admin QR Scanner Pass Verification & Check-In Routes
+router.post('/verify-pass', authenticate, authorize('organizer', 'admin'), verifyAnyPass);
+router.post('/check-in-pass', authenticate, authorize('organizer', 'admin'), checkInAnyPass);
+
 router.get('/:id', optionalAuthenticate, getEventById);
 
 // Admin-ONLY Protected Event CRUD & Assignment Routes (Organizers/Students receive 403 Forbidden)
