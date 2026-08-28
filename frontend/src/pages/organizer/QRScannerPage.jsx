@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import jsQR from 'jsqr';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { eventService } from '../../api/services/eventService';
@@ -51,12 +52,14 @@ export const QRScannerPage = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameras, setCameras] = useState([]);
   const [selectedCameraId, setSelectedCameraId] = useState('');
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const streamRef = useRef(null);
+  const animationFrameRef = useRef(null);
   const scanIntervalRef = useRef(null);
 
   // Manual & Upload State
@@ -124,7 +127,6 @@ export const QRScannerPage = () => {
           const videoDevices = devices.filter((d) => d.kind === 'videoinput');
           setCameras(videoDevices);
           if (videoDevices.length > 0 && !selectedCameraId) {
-            // Prefer back / environment camera if labeled
             const backCam = videoDevices.find((d) => /back|rear|environment/i.test(d.label));
             setSelectedCameraId(backCam ? backCam.deviceId : videoDevices[0].deviceId);
           }
@@ -142,6 +144,10 @@ export const QRScannerPage = () => {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
     }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -150,6 +156,7 @@ export const QRScannerPage = () => {
       videoRef.current.srcObject = null;
     }
     setCameraActive(false);
+    setCameraLoading(false);
     setTorchOn(false);
   }, []);
 
@@ -157,17 +164,19 @@ export const QRScannerPage = () => {
   const startCamera = useCallback(async () => {
     stopCamera();
     setCameraError(null);
+    setCameraLoading(true);
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError('Camera access is not supported by your browser.');
+      setCameraLoading(false);
       return;
     }
 
     try {
       const constraints = {
         video: selectedCameraId
-          ? { deviceId: { exact: selectedCameraId } }
-          : { facingMode: { ideal: 'environment' } },
+          ? { deviceId: { exact: selectedCameraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
       };
 
@@ -176,7 +185,12 @@ export const QRScannerPage = () => {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        videoRef.current.setAttribute('playsinline', 'true');
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          console.warn('Video auto-play warning:', playErr);
+        }
         setCameraActive(true);
 
         // Check torch capability
@@ -191,10 +205,14 @@ export const QRScannerPage = () => {
       console.error('Camera access error:', err);
       setCameraError(
         err.name === 'NotAllowedError'
-          ? 'Camera permission denied. Please enable camera access in your browser settings.'
+          ? 'Camera permission was denied. Please allow camera access in your browser address bar or settings.'
+          : err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError'
+          ? 'No camera found on this device.'
           : `Failed to open camera: ${err.message}`
       );
       setCameraActive(false);
+    } finally {
+      setCameraLoading(false);
     }
   }, [selectedCameraId, stopCamera]);
 
@@ -235,28 +253,40 @@ export const QRScannerPage = () => {
     [verifying, stopCamera, playBeep, showToast]
   );
 
-  // Scan frame from video feed using BarcodeDetector API or canvas
-  const scanVideoFrame = useCallback(async () => {
-    if (!videoRef.current || !cameraActive || verifying || verifiedPass) return;
+  // Scan frame from video feed using jsQR and fallback to BarcodeDetector
+  const scanVideoFrame = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || !cameraActive || verifying || verifiedPass) return;
 
     const video = videoRef.current;
     if (video.readyState < video.HAVE_CURRENT_DATA) return;
 
-    // 1. Native BarcodeDetector if supported
-    if ('BarcodeDetector' in window) {
-      try {
-        const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
-        const barcodes = await barcodeDetector.detect(video);
-        if (barcodes.length > 0) {
-          const rawValue = barcodes[0].rawValue;
-          if (rawValue) {
-            handleScannedData(rawValue);
-            return;
-          }
-        }
-      } catch (e) {
-        // BarcodeDetector detect failed or format error
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    ctx.drawImage(video, 0, 0, width, height);
+
+    try {
+      const imageData = ctx.getImageData(0, 0, width, height);
+      // Primary QR Decoder: jsQR (pure JS, 100% universal across all browsers)
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert'
+      });
+
+      if (code && code.data && code.data.trim() !== '') {
+        handleScannedData(code.data.trim());
+        return;
       }
+    } catch (e) {
+      // jsQR frame processing exception
     }
   }, [cameraActive, verifying, verifiedPass, handleScannedData]);
 
@@ -265,7 +295,7 @@ export const QRScannerPage = () => {
     if (cameraActive && !verifiedPass && !verifying) {
       scanIntervalRef.current = setInterval(() => {
         scanVideoFrame();
-      }, 350);
+      }, 250);
     }
     return () => {
       if (scanIntervalRef.current) {
@@ -301,7 +331,7 @@ export const QRScannerPage = () => {
     }
   };
 
-  // Image Upload QR Decoder
+  // Image Upload QR Decoder using jsQR
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -312,22 +342,32 @@ export const QRScannerPage = () => {
     try {
       const img = new Image();
       img.src = URL.createObjectURL(file);
-      await new Promise((resolve) => {
+      await new Promise((resolve, reject) => {
         img.onload = resolve;
+        img.onerror = () => reject(new Error('Failed to load image file.'));
       });
 
-      if ('BarcodeDetector' in window) {
-        const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
-        const barcodes = await barcodeDetector.detect(img);
-        if (barcodes.length > 0 && barcodes[0].rawValue) {
-          handleScannedData(barcodes[0].rawValue);
-          return;
-        }
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not initialize image processing context.');
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // Decode with jsQR
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth'
+      });
+
+      if (code && code.data && code.data.trim() !== '') {
+        handleScannedData(code.data.trim());
+        return;
       }
 
-      // If no native barcode detector or no QR found
       throw new Error(
-        'No QR code detected in this image. Please ensure the QR code is clearly visible, or type the pass code manually.'
+        'No QR code detected in this image. Please ensure the QR code is clearly visible, well-lit, and unblurred.'
       );
     } catch (err) {
       setVerifyError(err.message || 'Could not decode QR code from image.');
@@ -363,7 +403,7 @@ export const QRScannerPage = () => {
         setVerifiedPass((prev) => ({
           ...prev,
           attendance_status: 'present',
-          checked_in_at: new Date().toISOString(),
+          checked_in_at: res.data?.checked_in_at || new Date().toISOString(),
           is_already_checked_in: true
         }));
         playBeep('success');
@@ -404,6 +444,9 @@ export const QRScannerPage = () => {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
+      {/* Offscreen Canvas for Frame Capture */}
+      <canvas ref={canvasRef} className="hidden" />
+
       {/* Header Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
@@ -446,7 +489,10 @@ export const QRScannerPage = () => {
           {/* Tab Selection */}
           <div className="flex items-center p-1.5 bg-slate-100 rounded-2xl border border-slate-200/80">
             <button
-              onClick={() => setActiveTab('camera')}
+              onClick={() => {
+                setActiveTab('camera');
+                handleScanNext();
+              }}
               className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                 activeTab === 'camera'
                   ? 'bg-white text-indigo-600 shadow-sm'
@@ -457,7 +503,10 @@ export const QRScannerPage = () => {
               <span>Live Camera</span>
             </button>
             <button
-              onClick={() => setActiveTab('upload')}
+              onClick={() => {
+                setActiveTab('upload');
+                stopCamera();
+              }}
               className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                 activeTab === 'upload'
                   ? 'bg-white text-indigo-600 shadow-sm'
@@ -468,7 +517,10 @@ export const QRScannerPage = () => {
               <span>Upload QR Image</span>
             </button>
             <button
-              onClick={() => setActiveTab('manual')}
+              onClick={() => {
+                setActiveTab('manual');
+                stopCamera();
+              }}
               className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                 activeTab === 'manual'
                   ? 'bg-white text-indigo-600 shadow-sm'
@@ -485,11 +537,13 @@ export const QRScannerPage = () => {
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden p-4 sm:p-6 space-y-4">
               {/* Camera Frame Container */}
               <div className="relative aspect-video sm:aspect-[4/3] bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center shadow-inner">
+                {/* Always mount video element so .play() works reliably */}
                 <video
                   ref={videoRef}
                   playsInline
+                  autoPlay
                   muted
-                  className={`w-full h-full object-cover ${!cameraActive ? 'hidden' : 'block'}`}
+                  className="w-full h-full object-cover"
                 />
 
                 {/* Viewfinder Target Graphic Overlay */}
@@ -505,28 +559,34 @@ export const QRScannerPage = () => {
                       {/* Animated Laser Sweep Line */}
                       <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_12px_rgba(34,211,238,0.8)] animate-[bounce_2s_infinite]" />
                     </div>
-                    <p className="text-white/80 text-[11px] font-medium mt-4 bg-slate-900/80 px-3 py-1 rounded-full backdrop-blur-xs border border-white/10">
-                      Align Attendee or Volunteer QR inside the frame
+                    <p className="text-white/90 text-[11px] font-bold mt-4 bg-slate-900/80 px-3 py-1 rounded-full backdrop-blur-xs border border-white/10 shadow">
+                      Point camera at Attendee or Volunteer QR pass
                     </p>
                   </div>
                 )}
 
-                {/* Camera Inactive / Error Placeholder */}
-                {!cameraActive && (
-                  <div className="text-center p-6 text-slate-400 space-y-3">
-                    <CameraOff className="w-12 h-12 mx-auto text-slate-600" />
-                    <div>
-                      <p className="text-sm font-bold text-white">Camera Offline</p>
-                      <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                        {cameraError || 'Click below to activate camera permissions and begin scanning.'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={startCamera}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
-                    >
-                      Start Camera
-                    </button>
+                {/* Camera Inactive / Loading / Error Overlay */}
+                {(!cameraActive || cameraLoading) && (
+                  <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center text-slate-400 space-y-3 z-10">
+                    {cameraLoading ? (
+                      <LoadingSpinner text="Starting camera video stream..." />
+                    ) : (
+                      <>
+                        <CameraOff className="w-12 h-12 mx-auto text-slate-600" />
+                        <div>
+                          <p className="text-sm font-bold text-white">Camera Offline</p>
+                          <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                            {cameraError || 'Click below to activate camera permissions and begin scanning.'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={startCamera}
+                          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+                        >
+                          Start Camera
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -575,9 +635,10 @@ export const QRScannerPage = () => {
                   ) : (
                     <button
                       onClick={startCamera}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors"
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors flex items-center gap-1"
                     >
-                      Re-open Camera
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Re-open Camera</span>
                     </button>
                   )}
                 </div>
@@ -688,19 +749,19 @@ export const QRScannerPage = () => {
               <div className="p-6 space-y-5">
                 {/* Duplicate Check-In Warning Banner */}
                 {isAlreadyPresent && (
-                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-amber-900">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2.5 text-emerald-900">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                     <div className="text-xs">
-                      <p className="font-extrabold text-amber-800">
+                      <p className="font-extrabold text-emerald-800">
                         {checkInSuccess ? 'CHECK-IN CONFIRMED' : 'ALREADY CHECKED IN'}
                       </p>
-                      <p className="text-amber-700 mt-0.5">
+                      <p className="text-emerald-700 mt-0.5">
                         {checkInSuccess
-                          ? 'Participant successfully marked as Present.'
+                          ? 'Participant successfully marked as Present in MySQL database.'
                           : `Participant was already marked Present at ${
                               verifiedPass.checked_in_at
                                 ? new Date(verifiedPass.checked_in_at).toLocaleTimeString()
-                                : 'gate'
+                                : 'gate terminal'
                             }.`}
                       </p>
                     </div>
@@ -819,7 +880,7 @@ export const QRScannerPage = () => {
                     }`}
                   >
                     {checkingIn ? (
-                      <span>Updating Attendance...</span>
+                      <span>Updating Attendance in Database...</span>
                     ) : isAlreadyPresent ? (
                       <>
                         <Check className="w-5 h-5" />
@@ -838,7 +899,7 @@ export const QRScannerPage = () => {
                     className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5"
                   >
                     <RotateCw className="w-3.5 h-3.5" />
-                    <span>Scan Next Pass</span>
+                    <span>Scan Next Student Pass</span>
                   </button>
                 </div>
               </div>

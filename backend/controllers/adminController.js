@@ -579,34 +579,43 @@ const deleteUser = async (req, res, next) => {
 // @access  Private (Admin)
 const getAllRegistrationsAdmin = async (req, res, next) => {
   try {
-    const { status, event_id, search, type = 'volunteer', page = 1, limit = 15 } = req.query;
+    const { status, attendance_status, event_id, search, type = 'all', page = 1, limit = 15 } = req.query;
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 15;
     const offset = (pageNum - 1) * limitNum;
 
-    if (type === 'attendee') {
-      // Query attendee registrations
-      let whereClauses = [];
-      let queryParams = [];
+    const buildWhere = (tableAlias) => {
+      let clauses = [];
+      let params = [];
 
       if (status && status !== 'all') {
-        whereClauses.push('ar.status = ?');
-        queryParams.push(status);
+        clauses.push(`${tableAlias}.status = ?`);
+        params.push(status);
+      }
+
+      if (attendance_status && attendance_status !== 'all') {
+        clauses.push(`${tableAlias}.attendance_status = ?`);
+        params.push(attendance_status);
       }
 
       if (event_id && event_id !== 'all') {
-        whereClauses.push('ar.event_id = ?');
-        queryParams.push(parseInt(event_id, 10));
+        clauses.push(`${tableAlias}.event_id = ?`);
+        params.push(parseInt(event_id, 10));
       }
 
       if (search && search.trim() !== '') {
-        whereClauses.push('(u.name LIKE ? OR u.email LIKE ? OR e.title LIKE ? OR u.roll_number LIKE ?)');
+        clauses.push('(u.name LIKE ? OR u.email LIKE ? OR e.title LIKE ? OR u.roll_number LIKE ?)');
         const term = `%${search.trim()}%`;
-        queryParams.push(term, term, term, term);
+        params.push(term, term, term, term);
       }
 
-      const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+      const sql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+      return { sql, params };
+    };
+
+    if (type === 'attendee') {
+      const { sql: whereSql, params: queryParams } = buildWhere('ar');
 
       const [countRes] = await pool.query(
         `SELECT COUNT(*) AS total FROM attendee_registrations ar
@@ -621,6 +630,10 @@ const getAllRegistrationsAdmin = async (req, res, next) => {
         SELECT 
           ar.id AS registration_id,
           ar.status AS registration_status,
+          ar.attendance_status,
+          ar.checked_in_at,
+          NULL AS skills_notes,
+          NULL AS remarks,
           ar.registered_at,
           'attendee' AS record_type,
           u.id AS user_id,
@@ -652,47 +665,103 @@ const getAllRegistrationsAdmin = async (req, res, next) => {
           total,
           page: pageNum,
           limit: limitNum,
-          totalPages: Math.ceil(total / limitNum)
+          totalPages: Math.ceil(total / limitNum) || 1
+        }
+      });
+    } else if (type === 'volunteer') {
+      const { sql: whereSql, params: queryParams } = buildWhere('r');
+
+      const [countRes] = await pool.query(
+        `SELECT COUNT(*) AS total FROM registrations r
+         JOIN users u ON r.user_id = u.id
+         JOIN events e ON r.event_id = e.id
+         ${whereSql}`,
+        queryParams
+      );
+      const total = countRes[0].total;
+
+      const query = `
+        SELECT 
+          r.id AS registration_id,
+          r.status AS registration_status,
+          r.attendance_status,
+          r.checked_in_at,
+          r.skills_notes,
+          r.remarks,
+          r.registered_at,
+          'volunteer' AS record_type,
+          u.id AS user_id,
+          u.name AS student_name,
+          u.email AS student_email,
+          u.department AS student_department,
+          u.roll_number AS student_roll_number,
+          u.phone AS student_phone,
+          e.id AS event_id,
+          e.title AS event_title,
+          e.event_date,
+          e.venue,
+          org.name AS organizer_name
+        FROM registrations r
+        JOIN users u ON r.user_id = u.id
+        JOIN events e ON r.event_id = e.id
+        LEFT JOIN users org ON e.organizer_id = org.id
+        ${whereSql}
+        ORDER BY r.registered_at DESC
+        LIMIT ? OFFSET ?
+      `;
+
+      const [registrations] = await pool.query(query, [...queryParams, limitNum, offset]);
+
+      return res.json({
+        success: true,
+        data: registrations,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum) || 1
         }
       });
     }
 
-    // Default: Query volunteer applications
-    let whereClauses = [];
-    let queryParams = [];
+    // Default: 'all' -> Query both attendee registrations and volunteer applications
+    const { sql: whereAtt, params: paramsAtt } = buildWhere('ar');
+    const { sql: whereVol, params: paramsVol } = buildWhere('r');
 
-    if (status && status !== 'all') {
-      whereClauses.push('r.status = ?');
-      queryParams.push(status);
-    }
+    const queryAtt = `
+      SELECT 
+        ar.id AS registration_id,
+        ar.status AS registration_status,
+        ar.attendance_status,
+        ar.checked_in_at,
+        NULL AS skills_notes,
+        NULL AS remarks,
+        ar.registered_at,
+        'attendee' AS record_type,
+        u.id AS user_id,
+        u.name AS student_name,
+        u.email AS student_email,
+        u.department AS student_department,
+        u.roll_number AS student_roll_number,
+        u.phone AS student_phone,
+        e.id AS event_id,
+        e.title AS event_title,
+        e.event_date,
+        e.venue,
+        org.name AS organizer_name
+      FROM attendee_registrations ar
+      JOIN users u ON ar.user_id = u.id
+      JOIN events e ON ar.event_id = e.id
+      LEFT JOIN users org ON e.organizer_id = org.id
+      ${whereAtt}
+    `;
 
-    if (event_id && event_id !== 'all') {
-      whereClauses.push('r.event_id = ?');
-      queryParams.push(parseInt(event_id, 10));
-    }
-
-    if (search && search.trim() !== '') {
-      whereClauses.push('(u.name LIKE ? OR u.email LIKE ? OR e.title LIKE ? OR u.roll_number LIKE ?)');
-      const term = `%${search.trim()}%`;
-      queryParams.push(term, term, term, term);
-    }
-
-    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-
-    const [countRes] = await pool.query(
-      `SELECT COUNT(*) AS total FROM registrations r
-       JOIN users u ON r.user_id = u.id
-       JOIN events e ON r.event_id = e.id
-       ${whereSql}`,
-      queryParams
-    );
-    const total = countRes[0].total;
-
-    const query = `
+    const queryVol = `
       SELECT 
         r.id AS registration_id,
         r.status AS registration_status,
         r.attendance_status,
+        r.checked_in_at,
         r.skills_notes,
         r.remarks,
         r.registered_at,
@@ -712,21 +781,27 @@ const getAllRegistrationsAdmin = async (req, res, next) => {
       JOIN users u ON r.user_id = u.id
       JOIN events e ON r.event_id = e.id
       LEFT JOIN users org ON e.organizer_id = org.id
-      ${whereSql}
-      ORDER BY r.registered_at DESC
-      LIMIT ? OFFSET ?
+      ${whereVol}
     `;
 
-    const [registrations] = await pool.query(query, [...queryParams, limitNum, offset]);
+    const [attendees] = await pool.query(queryAtt, paramsAtt);
+    const [volunteers] = await pool.query(queryVol, paramsVol);
+
+    const allRecords = [...attendees, ...volunteers].sort((a, b) => {
+      return new Date(b.registered_at) - new Date(a.registered_at);
+    });
+
+    const total = allRecords.length;
+    const paginatedRecords = allRecords.slice(offset, offset + limitNum);
 
     res.json({
       success: true,
-      data: registrations,
+      data: paginatedRecords,
       pagination: {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum)
+        totalPages: Math.ceil(total / limitNum) || 1
       }
     });
   } catch (error) {

@@ -590,8 +590,8 @@ const verifyAttendeePass = async (req, res, next) => {
 // @access  Private (Organizer of assigned event, Admin)
 const checkInAttendee = async (req, res, next) => {
   try {
-    const registrationId = req.params.id || req.body.registration_id;
-    const attendanceStatus = req.body.attendance_status || 'present';
+    const registrationId = req.params?.id || req.body?.registration_id;
+    const attendanceStatus = req.body?.attendance_status || 'present';
 
     if (!registrationId) {
       return res.status(400).json({
@@ -643,16 +643,26 @@ const checkInAttendee = async (req, res, next) => {
       [attendanceStatus, registrationId]
     );
 
+    const [updatedRows] = await pool.query(
+      `SELECT ar.id, ar.status, ar.attendance_status, ar.checked_in_at, e.title AS event_title, u.name AS student_name
+       FROM attendee_registrations ar
+       JOIN events e ON ar.event_id = e.id
+       JOIN users u ON ar.user_id = u.id
+       WHERE ar.id = ?`,
+      [registrationId]
+    );
+    const updated = updatedRows[0] || reg;
+
     res.json({
       success: true,
       message: isAlreadyPresent && attendanceStatus === 'present'
-        ? `Attendee ${reg.student_name} is already checked in.`
-        : `Attendee ${reg.student_name} successfully checked in for "${reg.event_title}"!`,
+        ? `Attendee ${updated.student_name} is already checked in.`
+        : `Attendee ${updated.student_name} successfully checked in for "${updated.event_title}"!`,
       data: {
-        registration_id: reg.id,
-        attendance_status: attendanceStatus,
-        checked_in_at: reg.checked_in_at || new Date(),
-        student_name: reg.student_name,
+        registration_id: updated.id,
+        attendance_status: updated.attendance_status,
+        checked_in_at: updated.checked_in_at,
+        student_name: updated.student_name,
         was_already_checked_in: isAlreadyPresent
       }
     });
