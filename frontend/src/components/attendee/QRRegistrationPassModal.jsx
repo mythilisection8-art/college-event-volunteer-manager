@@ -19,7 +19,8 @@ import {
   Hourglass,
   CheckCircle2,
   XCircle,
-  FileText
+  FileText,
+  Download
 } from 'lucide-react';
 
 export const QRRegistrationPassModal = ({
@@ -111,6 +112,34 @@ export const QRRegistrationPassModal = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadQR = () => {
+    try {
+      const svg = document.getElementById('pass-qr-code-svg');
+      if (!svg) return;
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = 400;
+        canvas.height = 400;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 400, 400);
+        ctx.drawImage(img, 0, 0, 400, 400);
+        const pngUrl = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = pngUrl;
+        a.download = `VoluntSync_${passData?.pass_code || 'Pass'}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    } catch (err) {
+      console.error('Download QR failed:', err);
+    }
   };
 
   const regStatus = passData?.registration_status;
@@ -306,11 +335,12 @@ export const QRRegistrationPassModal = ({
                       </div>
                     )}
 
-                    <div className="p-2 bg-white rounded-xl shadow-inner border border-slate-100">
+                    <div className="p-2.5 bg-white rounded-2xl shadow-inner border border-slate-100 flex items-center justify-center">
                       <QRCodeSVG
+                        id="pass-qr-code-svg"
                         value={passData.qr_payload || passData.pass_code || 'PENDING_APPROVAL'}
-                        size={170}
-                        level="H"
+                        size={200}
+                        level="M"
                         includeMargin={true}
                         className={!isActive ? 'opacity-20 grayscale' : 'opacity-100'}
                       />
@@ -457,16 +487,27 @@ export const QRRegistrationPassModal = ({
               </div>
 
               {/* Bottom Actions */}
-              <div className="flex items-center justify-end gap-3 pt-2 print:hidden">
+              <div className="flex flex-wrap items-center justify-end gap-3 pt-2 print:hidden">
                 {isActive && (
-                  <button
-                    type="button"
-                    onClick={handlePrint}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-2"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>Print Pass</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleDownloadQR}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-2"
+                      title="Download QR code image (PNG)"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download QR</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePrint}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-2"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Print Pass</span>
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"

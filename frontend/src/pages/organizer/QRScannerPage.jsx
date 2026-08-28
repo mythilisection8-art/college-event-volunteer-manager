@@ -253,13 +253,96 @@ export const QRScannerPage = () => {
     [verifying, stopCamera, playBeep, showToast]
   );
 
-  // Scan frame from video feed using jsQR and fallback to BarcodeDetector
-  const scanVideoFrame = useCallback(() => {
+  // Multi-engine QR Decoder from Canvas/Image
+  const decodeImageSource = useCallback(async (sourceCanvas, sourceImg = null) => {
+    // Engine 1: Native Hardware BarcodeDetector API (Instant & native)
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const barcodes = await detector.detect(sourceImg || sourceCanvas);
+        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+          const raw = barcodes[0].rawValue.trim();
+          if (raw) return raw;
+        }
+      } catch (_) {}
+    }
+
+    // Engine 2: jsQR with both normal and inverted attempts
+    const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    if (ctx && sourceCanvas.width > 0 && sourceCanvas.height > 0) {
+      try {
+        const imageData = ctx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'attemptBoth'
+        });
+        if (code && code.data && code.data.trim() !== '') {
+          return code.data.trim();
+        }
+      } catch (_) {}
+
+      // Multi-scale rescale for high-res smartphone photos (> 1200px)
+      const maxDim = Math.max(sourceCanvas.width, sourceCanvas.height);
+      if (maxDim > 1200) {
+        for (const targetDim of [1000, 600]) {
+          try {
+            const scale = targetDim / maxDim;
+            const scaledCanvas = document.createElement('canvas');
+            scaledCanvas.width = Math.round(sourceCanvas.width * scale);
+            scaledCanvas.height = Math.round(sourceCanvas.height * scale);
+            const scaledCtx = scaledCanvas.getContext('2d');
+            scaledCtx.drawImage(sourceCanvas, 0, 0, scaledCanvas.width, scaledCanvas.height);
+            const scaledImgData = scaledCtx.getImageData(0, 0, scaledCanvas.width, scaledCanvas.height);
+            const scaledCode = jsQR(scaledImgData.data, scaledImgData.width, scaledImgData.height, {
+              inversionAttempts: 'attemptBoth'
+            });
+            if (scaledCode && scaledCode.data && scaledCode.data.trim() !== '') {
+              return scaledCode.data.trim();
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    // Engine 3: ZXing Library Fallback
+    try {
+      const { BrowserQRCodeReader } = await import('@zxing/library');
+      const reader = new BrowserQRCodeReader();
+      if (sourceImg) {
+        const res = await reader.decodeFromImageElement(sourceImg);
+        if (res && res.getText()) return res.getText().trim();
+      } else if (sourceCanvas) {
+        const dataUrl = sourceCanvas.toDataURL('image/png');
+        const res = await reader.decodeFromImageUrl(dataUrl);
+        if (res && res.getText()) return res.getText().trim();
+      }
+    } catch (_) {}
+
+    return null;
+  }, []);
+
+  // Scan frame from video feed using multi-engine decoder
+  const scanVideoFrame = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current || !cameraActive || verifying || verifiedPass) return;
 
     const video = videoRef.current;
     if (video.readyState < video.HAVE_CURRENT_DATA) return;
 
+    // Fast-path 1: Native BarcodeDetector directly on <video> (runs in GPU/native C++)
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const barcodes = await detector.detect(video);
+        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+          const raw = barcodes[0].rawValue.trim();
+          if (raw) {
+            handleScannedData(raw);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Fast-path 2: jsQR on canvas frame
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
@@ -276,9 +359,8 @@ export const QRScannerPage = () => {
 
     try {
       const imageData = ctx.getImageData(0, 0, width, height);
-      // Primary QR Decoder: jsQR (pure JS, 100% universal across all browsers)
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert'
+        inversionAttempts: 'attemptBoth'
       });
 
       if (code && code.data && code.data.trim() !== '') {
@@ -295,7 +377,7 @@ export const QRScannerPage = () => {
     if (cameraActive && !verifiedPass && !verifying) {
       scanIntervalRef.current = setInterval(() => {
         scanVideoFrame();
-      }, 250);
+      }, 200);
     }
     return () => {
       if (scanIntervalRef.current) {
@@ -331,7 +413,7 @@ export const QRScannerPage = () => {
     }
   };
 
-  // Image Upload QR Decoder using jsQR
+  // Image Upload QR Decoder using multi-engine pipeline
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -340,29 +422,37 @@ export const QRScannerPage = () => {
     setVerifyError(null);
 
     try {
+      let imageSrc = '';
+      if (file.type.includes('svg') || file.name.endsWith('.svg')) {
+        const svgText = await file.text();
+        const base64 = btoa(unescape(encodeURIComponent(svgText)));
+        imageSrc = `data:image/svg+xml;base64,${base64}`;
+      } else {
+        imageSrc = URL.createObjectURL(file);
+      }
+
       const img = new Image();
-      img.src = URL.createObjectURL(file);
+      img.crossOrigin = 'anonymous';
+      img.src = imageSrc;
       await new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = () => reject(new Error('Failed to load image file.'));
       });
 
       const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
+      canvas.width = img.naturalWidth || img.width || 500;
+      canvas.height = img.naturalHeight || img.height || 500;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Could not initialize image processing context.');
 
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      // Decode with jsQR
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'attemptBoth'
-      });
+      const decodedData = await decodeImageSource(canvas, img);
 
-      if (code && code.data && code.data.trim() !== '') {
-        handleScannedData(code.data.trim());
+      if (decodedData && decodedData.trim() !== '') {
+        handleScannedData(decodedData.trim());
         return;
       }
 
